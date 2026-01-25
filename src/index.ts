@@ -108,9 +108,12 @@ app.get('/health', (req, res) => {
 app.use(errorHandler);
 
 // Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📚 Swagger docs available at http://localhost:${PORT}/api-docs`);
+// Em produção (Docker/containers), precisa escutar em 0.0.0.0 para aceitar conexões externas
+const HOST = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost');
+
+app.listen(PORT, HOST, () => {
+  console.log(`🚀 Server running on http://${HOST}:${PORT}`);
+  console.log(`📚 Swagger docs available at http://${HOST}:${PORT}/api-docs`);
 });
 
 export default app;
