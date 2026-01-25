@@ -93,7 +93,7 @@ export const updateCategoria = async (req: RequestWithUser, res: Response) => {
     // Verificar se categoria existe
     const { data: existing } = await supabase
       .from('estoque_categorias')
-      .select('id')
+      .select('id, nome')
       .eq('id', id)
       .single();
 
