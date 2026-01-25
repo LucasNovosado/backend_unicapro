@@ -40,9 +40,7 @@ Desktop.ini
 # Temporary files
 *.tmp
 *.temp
-.cache/
-
-# Coverage
+.cache/# Coverage
 coverage/
 .nyc_output/# TypeScript
 *.tsbuildinfo
