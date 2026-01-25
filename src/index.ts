@@ -6,7 +6,19 @@ import swaggerUi from 'swagger-ui-express';
 import routes from './routes';
 import { errorHandler } from './middleware/validation';
 
+// Carregar variáveis de ambiente primeiro
 dotenv.config();
+
+// Verificar variáveis de ambiente críticas antes de iniciar
+const requiredEnvVars = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_ANON_KEY'];
+const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+
+if (missingVars.length > 0) {
+  console.error('❌ ERRO: Variáveis de ambiente obrigatórias não encontradas:');
+  missingVars.forEach(varName => console.error(`   - ${varName}`));
+  console.error('\n💡 Certifique-se de que todas as variáveis estão configuradas no Easypanel.');
+  process.exit(1);
+}
 
 const app: Express = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -127,18 +139,56 @@ app.get('/', (req, res) => {
 // Error handler
 app.use(errorHandler);
 
+// Tratamento de erros não capturados
+process.on('uncaughtException', (error: Error) => {
+  console.error('❌ ERRO NÃO CAPTURADO:', error);
+  console.error('Stack:', error.stack);
+  // Não encerrar o processo imediatamente em produção, mas registrar o erro
+});
+
+process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+  console.error('❌ PROMISE REJEITADA NÃO TRATADA:', reason);
+  console.error('Promise:', promise);
+});
+
 // Start server
 // Em produção (Docker/containers), precisa escutar em 0.0.0.0 para aceitar conexões externas
 const HOST = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost');
 
-app.listen(PORT, HOST, () => {
-  console.log(`🚀 Server running on http://${HOST}:${PORT}`);
-  console.log(`📚 Swagger docs available at http://${HOST}:${PORT}/api-docs`);
-  console.log(`🔍 Health check: http://${HOST}:${PORT}/health`);
-  console.log(`📍 API Base: http://${HOST}:${PORT}/api/${process.env.API_VERSION || 'v1'}`);
-  console.log(`🏪 Lojas endpoint: http://${HOST}:${PORT}/api/${process.env.API_VERSION || 'v1'}/lojas`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔑 Supabase URL: ${process.env.SUPABASE_URL ? '✅ Configurado' : '❌ Não configurado'}`);
-});
+try {
+  // Tentar importar o Supabase para verificar se há erros na inicialização
+  import('./config/supabase').then(() => {
+    console.log('✅ Supabase configurado com sucesso');
+  }).catch((error) => {
+    console.error('❌ ERRO ao inicializar Supabase:', error);
+    console.error('Stack:', error.stack);
+  });
+
+  app.listen(PORT, HOST, () => {
+    console.log('='.repeat(60));
+    console.log(`🚀 Server running on http://${HOST}:${PORT}`);
+    console.log(`📚 Swagger docs available at http://${HOST}:${PORT}/api-docs`);
+    console.log(`🔍 Health check: http://${HOST}:${PORT}/health`);
+    console.log(`📍 API Base: http://${HOST}:${PORT}/api/${process.env.API_VERSION || 'v1'}`);
+    console.log(`🏪 Lojas endpoint: http://${HOST}:${PORT}/api/${process.env.API_VERSION || 'v1'}/lojas`);
+    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🔑 Supabase URL: ${process.env.SUPABASE_URL ? '✅ Configurado' : '❌ Não configurado'}`);
+    console.log(`📦 Port: ${PORT}`);
+    console.log(`🌐 Host: ${HOST}`);
+    console.log('='.repeat(60));
+  }).on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(`❌ ERRO: Porta ${PORT} já está em uso!`);
+      console.error('💡 Tente usar uma porta diferente ou pare o processo que está usando esta porta.');
+    } else {
+      console.error('❌ ERRO ao iniciar servidor:', error);
+    }
+    process.exit(1);
+  });
+} catch (error: any) {
+  console.error('❌ ERRO FATAL ao iniciar aplicação:', error);
+  console.error('Stack:', error.stack);
+  process.exit(1);
+}
 
 export default app;
