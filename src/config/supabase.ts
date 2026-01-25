@@ -26,9 +26,10 @@ if (!supabaseUrl.startsWith('http://') && !supabaseUrl.startsWith('https://')) {
 }
 
 // Cliente com service role (para operações administrativas)
+// Usar as constantes validadas para garantir type safety
 export const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  supabaseUrl,
+  supabaseServiceKey,
   {
     auth: {
       autoRefreshToken: false,
@@ -39,8 +40,8 @@ export const supabase = createClient(
 
 // Cliente público (para login de usuários)
 export const supabasePublic = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY,
+  supabaseUrl,
+  supabaseAnonKey,
   {
     auth: {
       autoRefreshToken: false,
@@ -52,8 +53,8 @@ export const supabasePublic = createClient(
 // Helper para obter Supabase client com token do usuário
 export const getSupabaseClient = (token: string) => {
   return createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    supabaseAnonKey,
     {
       global: {
         headers: {
