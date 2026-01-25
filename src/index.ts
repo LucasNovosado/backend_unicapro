@@ -35,7 +35,7 @@ const corsOptions = {
       callback(null, true);
     } else {
       // Em desenvolvimento, permite qualquer origem para facilitar testes
-      if (process.env.NODE_ENV === 'development') {
+      if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV || process.env.NODE_ENV === '') {
         callback(null, true);
       } else {
         console.warn(`CORS bloqueado para origem: ${origin}`);
@@ -45,7 +45,10 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['Content-Type', 'Authorization'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
 };
 
 // Middlewares
