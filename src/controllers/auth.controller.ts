@@ -138,7 +138,7 @@ export const getEstoquesLocais = async (req: RequestWithUser, res: Response) => 
     // Apenas diretor e supervisor podem ver o estoque central
     // Diretor vê todos os estoques (central + todas as lojas)
     // Supervisor vê estoque central + estoques de suas lojas
-    if (userNivel === 'supervisor' && req.userRegra.lojas_vinculadas) {
+    if (userNivel === 'supervisor' && req.userRegra?.lojas_vinculadas) {
       query = query.or(`tipo.eq.central,loja_id.in.(${req.userRegra.lojas_vinculadas.join(',')})`);
     } else if (userNivel !== 'diretor' && userNivel !== 'supervisor') {
       // Outros níveis não veem o estoque central

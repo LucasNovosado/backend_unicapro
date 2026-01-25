@@ -1,4 +1,5 @@
-import { RequestWithUser, Response } from 'express';
+import { Response } from 'express';
+import { RequestWithUser } from '../middleware/auth';
 import { supabase } from '../config/supabase';
 
 export const getSaldos = async (req: RequestWithUser, res: Response) => {
