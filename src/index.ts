@@ -108,6 +108,22 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Root endpoint for debugging
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'API Estoque - Backend está funcionando!',
+    version: process.env.API_VERSION || 'v1',
+    environment: process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString(),
+    endpoints: {
+      health: '/health',
+      apiDocs: '/api-docs',
+      apiBase: `/api/${process.env.API_VERSION || 'v1'}`,
+      lojas: `/api/${process.env.API_VERSION || 'v1'}/lojas (requer autenticação)`
+    }
+  });
+});
+
 // Error handler
 app.use(errorHandler);
 
@@ -118,6 +134,11 @@ const HOST = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0
 app.listen(PORT, HOST, () => {
   console.log(`🚀 Server running on http://${HOST}:${PORT}`);
   console.log(`📚 Swagger docs available at http://${HOST}:${PORT}/api-docs`);
+  console.log(`🔍 Health check: http://${HOST}:${PORT}/health`);
+  console.log(`📍 API Base: http://${HOST}:${PORT}/api/${process.env.API_VERSION || 'v1'}`);
+  console.log(`🏪 Lojas endpoint: http://${HOST}:${PORT}/api/${process.env.API_VERSION || 'v1'}/lojas`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔑 Supabase URL: ${process.env.SUPABASE_URL ? '✅ Configurado' : '❌ Não configurado'}`);
 });
 
 export default app;
