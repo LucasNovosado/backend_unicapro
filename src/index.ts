@@ -21,6 +21,7 @@ const corsOptions = {
       'http://localhost:5174',
       'http://127.0.0.1:5173',
       'http://127.0.0.1:3000',
+      'https://localhost:5173',
       // Adicione aqui o domínio de produção do frontend quando disponível
       process.env.FRONTEND_URL,
     ].filter(Boolean); // Remove valores undefined/null
@@ -34,8 +35,11 @@ const corsOptions = {
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      // Em desenvolvimento, permite qualquer origem para facilitar testes
-      if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV || process.env.NODE_ENV === '') {
+      // Permite localhost em qualquer ambiente (útil para desenvolvimento local acessando produção)
+      if (origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
+        callback(null, true);
+      } else if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV || process.env.NODE_ENV === '') {
+        // Em desenvolvimento, permite qualquer origem
         callback(null, true);
       } else {
         console.warn(`CORS bloqueado para origem: ${origin}`);
