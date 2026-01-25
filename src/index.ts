@@ -9,7 +9,7 @@ import { errorHandler } from './middleware/validation';
 dotenv.config();
 
 const app: Express = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // CORS Configuration
 const corsOptions = {
