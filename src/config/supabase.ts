@@ -25,11 +25,16 @@ if (!supabaseUrl.startsWith('http://') && !supabaseUrl.startsWith('https://')) {
   throw new Error('Invalid SUPABASE_URL format');
 }
 
+// Após validação, garantir que são strings (type assertion para TypeScript)
+const SUPABASE_URL: string = supabaseUrl;
+const SUPABASE_SERVICE_ROLE_KEY: string = supabaseServiceKey;
+const SUPABASE_ANON_KEY: string = supabaseAnonKey;
+
 // Cliente com service role (para operações administrativas)
-// Usar as constantes validadas para garantir type safety
+// Usar as constantes validadas e tipadas para garantir type safety
 export const supabase = createClient(
-  supabaseUrl,
-  supabaseServiceKey,
+  SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY,
   {
     auth: {
       autoRefreshToken: false,
@@ -40,8 +45,8 @@ export const supabase = createClient(
 
 // Cliente público (para login de usuários)
 export const supabasePublic = createClient(
-  supabaseUrl,
-  supabaseAnonKey,
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY,
   {
     auth: {
       autoRefreshToken: false,
@@ -53,8 +58,8 @@ export const supabasePublic = createClient(
 // Helper para obter Supabase client com token do usuário
 export const getSupabaseClient = (token: string) => {
   return createClient(
-    supabaseUrl,
-    supabaseAnonKey,
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY,
     {
       global: {
         headers: {
