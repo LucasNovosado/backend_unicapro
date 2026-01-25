@@ -31,13 +31,35 @@ const corsOptions = {
 // Middlewares - CORS deve ser o primeiro
 app.use(cors(corsOptions));
 
-// Handler explícito para requisições OPTIONS (preflight)
-app.options('*', cors(corsOptions));
+// Handler explícito para requisições OPTIONS (preflight) - deve vir antes das rotas
+app.options('*', (req, res) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Auth-Token');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Max-Age', '86400');
+  res.sendStatus(204);
+});
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Swagger configuration
+const getServerUrl = () => {
+  // Se tiver variável de ambiente com a URL do servidor, usa ela
+  if (process.env.SERVER_URL) {
+    return process.env.SERVER_URL;
+  }
+  // Se estiver em produção, tenta construir a URL do Easypanel
+  if (process.env.NODE_ENV === 'production') {
+    // Easypanel geralmente usa variáveis de ambiente como EASYPANEL_SERVICE_URL
+    // ou você pode definir SERVER_URL manualmente
+    return process.env.EASYPANEL_SERVICE_URL || `https://sites-backend-unicapro.ftqqwv.easypanel.host`;
+  }
+  // Em desenvolvimento, usa localhost
+  return `http://localhost:${PORT}`;
+};
+
 const swaggerOptions = {
   definition: {
     openapi: '3.0.0',
@@ -48,9 +70,14 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: `http://localhost:${PORT}`,
-        description: 'Servidor de desenvolvimento',
+        url: getServerUrl(),
+        description: process.env.NODE_ENV === 'production' ? 'Servidor de produção' : 'Servidor de desenvolvimento',
       },
+      // Adiciona servidor de desenvolvimento se estiver em produção (para referência)
+      ...(process.env.NODE_ENV === 'production' ? [{
+        url: `http://localhost:${PORT}`,
+        description: 'Servidor local (desenvolvimento)',
+      }] : []),
     ],
     components: {
       securitySchemes: {
