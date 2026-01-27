@@ -112,12 +112,40 @@ const swaggerOptions = {
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-// Routes
-app.use(`/api/${process.env.API_VERSION || 'v1'}`, routes);
+// Routes - com tratamento de erro para garantir que o servidor inicie
+try {
+  app.use(`/api/${process.env.API_VERSION || 'v1'}`, routes);
+  console.log('✅ Rotas carregadas com sucesso');
+} catch (error: any) {
+  console.error('❌ ERRO ao carregar rotas:', error.message);
+  console.error('Stack:', error.stack);
+  // Continuar mesmo assim - o servidor deve iniciar para mostrar o erro
+}
 
-// Health check
+// Health check - deve funcionar mesmo se houver problemas com Supabase
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  try {
+    const health = {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV || 'development',
+      port: PORT,
+      host: HOST,
+      supabase: {
+        url: process.env.SUPABASE_URL ? '✅ Configurado' : '❌ Não configurado',
+        serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY ? '✅ Configurado' : '❌ Não configurado',
+        anonKey: process.env.SUPABASE_ANON_KEY ? '✅ Configurado' : '❌ Não configurado'
+      }
+    };
+    res.json(health);
+  } catch (error: any) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Root endpoint for debugging
@@ -156,13 +184,16 @@ process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
 const HOST = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost');
 
 try {
-  // Tentar importar o Supabase para verificar se há erros na inicialização
-  import('./config/supabase').then(() => {
+  // Verificar se o Supabase foi inicializado corretamente
+  // (o módulo já foi importado pelas rotas, então se houver erro, já terá sido lançado)
+  try {
+    require('./config/supabase');
     console.log('✅ Supabase configurado com sucesso');
-  }).catch((error) => {
-    console.error('❌ ERRO ao inicializar Supabase:', error);
+  } catch (error: any) {
+    console.error('❌ ERRO ao inicializar Supabase:', error.message);
     console.error('Stack:', error.stack);
-  });
+    // Continuar mesmo assim para ver outros erros
+  }
 
   app.listen(PORT, HOST, () => {
     console.log('='.repeat(60));

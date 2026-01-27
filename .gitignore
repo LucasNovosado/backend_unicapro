@@ -35,9 +35,7 @@ Desktop.ini
 .idea/
 *.swp
 *.swo
-*~
-
-# Temporary files
+*~# Temporary files
 *.tmp
 *.temp
 .cache/# Coverage

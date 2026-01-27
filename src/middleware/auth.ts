@@ -131,3 +131,78 @@ export const checkLojaAccess = (
 
   next();
 };
+
+// Middleware para verificar acesso ao estoque local (supervisor só pode acessar estoques de suas lojas ou central)
+export const checkEstoqueLocalAccess = async (
+  req: RequestWithUser,
+  res: Response,
+  next: NextFunction
+) => {
+  if (!req.userRegra) {
+    return res.status(401).json({ error: 'Usuário não autenticado' });
+  }
+
+  // Diretor tem acesso a tudo
+  if (req.userRegra.nivel === 'diretor') {
+    return next();
+  }
+
+  // Supervisor precisa verificar acesso aos estoques locais
+  const estoqueLocalIds: string[] = [];
+  
+  // Verificar estoque_local_destino_id (entrada, ajuste positivo)
+  if (req.body.estoque_local_destino_id) {
+    estoqueLocalIds.push(req.body.estoque_local_destino_id);
+  }
+  
+  // Verificar estoque_local_origem_id (saída, ajuste negativo)
+  if (req.body.estoque_local_origem_id) {
+    estoqueLocalIds.push(req.body.estoque_local_origem_id);
+  }
+  
+  // Verificar origem_id e destino_id (transferência)
+  if (req.body.origem_id) {
+    estoqueLocalIds.push(req.body.origem_id);
+  }
+  if (req.body.destino_id) {
+    estoqueLocalIds.push(req.body.destino_id);
+  }
+  
+  // Verificar estoque_local_id (ajuste)
+  if (req.body.estoque_local_id) {
+    estoqueLocalIds.push(req.body.estoque_local_id);
+  }
+
+  if (estoqueLocalIds.length === 0) {
+    return res.status(400).json({ error: 'Estoque local não especificado' });
+  }
+
+  // Buscar informações dos estoques locais
+  const { data: estoquesLocais, error } = await supabase
+    .from('estoque_locais')
+    .select('id, tipo, loja_id')
+    .in('id', estoqueLocalIds);
+
+  if (error) {
+    return res.status(500).json({ error: 'Erro ao verificar estoques locais' });
+  }
+
+  // Verificar acesso para cada estoque
+  for (const estoque of estoquesLocais || []) {
+    // Estoque central sempre permitido para supervisor
+    if (estoque.tipo === 'central') {
+      continue;
+    }
+    
+    // Para estoques de loja, verificar se supervisor tem acesso
+    if (estoque.tipo === 'loja' && estoque.loja_id) {
+      if (!req.userRegra.lojas_vinculadas?.includes(estoque.loja_id)) {
+        return res.status(403).json({ 
+          error: `Acesso negado ao estoque da loja ${estoque.loja_id}` 
+        });
+      }
+    }
+  }
+
+  next();
+};

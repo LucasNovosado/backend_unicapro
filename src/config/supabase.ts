@@ -3,6 +3,15 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// Função para validar e obter variáveis de ambiente
+function getEnvVar(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
 // Validação das variáveis de ambiente
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -16,6 +25,7 @@ if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
   
   console.error('❌ ERRO: Variáveis de ambiente do Supabase não encontradas:');
   missing.forEach(varName => console.error(`   - ${varName}`));
+  console.error('\n💡 Certifique-se de que todas as variáveis estão configuradas no Easypanel.');
   throw new Error(`Missing Supabase environment variables: ${missing.join(', ')}`);
 }
 
@@ -29,6 +39,13 @@ if (!supabaseUrl.startsWith('http://') && !supabaseUrl.startsWith('https://')) {
 const SUPABASE_URL: string = supabaseUrl;
 const SUPABASE_SERVICE_ROLE_KEY: string = supabaseServiceKey;
 const SUPABASE_ANON_KEY: string = supabaseAnonKey;
+
+// Log de confirmação (sem expor as chaves)
+console.log('✅ Supabase configurado:', {
+  url: SUPABASE_URL,
+  hasServiceKey: !!SUPABASE_SERVICE_ROLE_KEY,
+  hasAnonKey: !!SUPABASE_ANON_KEY
+});
 
 // Cliente com service role (para operações administrativas)
 // Usar as constantes validadas e tipadas para garantir type safety

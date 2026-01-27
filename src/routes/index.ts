@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, getUserRegra, requireAdmin } from '../middleware/auth';
+import { authenticate, getUserRegra, requireAdmin, checkEstoqueLocalAccess } from '../middleware/auth';
 import { validate } from '../middleware/validation';
 import * as produtosController from '../controllers/produtos.controller';
 import * as estoqueController from '../controllers/estoque.controller';
@@ -48,8 +48,9 @@ router.get('/estoques/locais', authenticate, getUserRegra, authController.getEst
 // PRODUTOS
 // ============================================
 router.get('/produtos', authenticate, getUserRegra, validate(getProdutosSchema), produtosController.getProdutos);
-router.get('/produtos/:id', authenticate, getUserRegra, produtosController.getProdutoById);
+router.post('/produtos/create-during-solicitacao', authenticate, getUserRegra, validate(createProdutoSchema), produtosController.createProdutoDuringSolicitacao);
 router.post('/produtos', authenticate, getUserRegra, requireAdmin, validate(createProdutoSchema), produtosController.createProduto);
+router.get('/produtos/:id', authenticate, getUserRegra, produtosController.getProdutoById);
 router.put('/produtos/:id', authenticate, getUserRegra, requireAdmin, validate(updateProdutoSchema), produtosController.updateProduto);
 router.delete('/produtos/:id', authenticate, getUserRegra, requireAdmin, produtosController.deleteProduto);
 
@@ -58,10 +59,10 @@ router.delete('/produtos/:id', authenticate, getUserRegra, requireAdmin, produto
 // ============================================
 router.get('/estoque/saldos', authenticate, getUserRegra, estoqueController.getSaldos);
 router.get('/estoque/movimentos', authenticate, getUserRegra, estoqueController.getMovimentos);
-router.post('/estoque/entrada', authenticate, getUserRegra, requireAdmin, validate(entradaEstoqueSchema), estoqueController.entradaEstoque);
-router.post('/estoque/saida', authenticate, getUserRegra, requireAdmin, validate(saidaEstoqueSchema), estoqueController.saidaEstoque);
-router.post('/estoque/transferencia', authenticate, getUserRegra, requireAdmin, validate(transferenciaEstoqueSchema), estoqueController.transferenciaEstoque);
-router.post('/estoque/ajuste', authenticate, getUserRegra, requireAdmin, validate(ajusteEstoqueSchema), estoqueController.ajusteEstoque);
+router.post('/estoque/entrada', authenticate, getUserRegra, checkEstoqueLocalAccess, validate(entradaEstoqueSchema), estoqueController.entradaEstoque);
+router.post('/estoque/saida', authenticate, getUserRegra, checkEstoqueLocalAccess, validate(saidaEstoqueSchema), estoqueController.saidaEstoque);
+router.post('/estoque/transferencia', authenticate, getUserRegra, checkEstoqueLocalAccess, validate(transferenciaEstoqueSchema), estoqueController.transferenciaEstoque);
+router.post('/estoque/ajuste', authenticate, getUserRegra, checkEstoqueLocalAccess, validate(ajusteEstoqueSchema), estoqueController.ajusteEstoque);
 
 // ============================================
 // SOLICITAÇÕES
