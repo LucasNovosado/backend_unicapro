@@ -7,6 +7,7 @@ import * as solicitacoesController from '../controllers/solicitacoes.controller'
 import * as authController from '../controllers/auth.controller';
 import * as alertasController from '../controllers/alertas.controller';
 import * as categoriasController from '../controllers/categorias.controller';
+import * as vendasOnlineController from '../controllers/vendasOnline.controller';
 import {
   loginSchema,
   createProdutoSchema,
@@ -26,7 +27,10 @@ import {
   confirmarAplicacaoSchema,
   createCategoriaSchema,
   updateCategoriaSchema,
-  getCategoriasSchema
+  getCategoriasSchema,
+  createVendaOnlineSchema,
+  updateVendaOnlineSchema,
+  getVendasOnlineSchema
 } from '../schemas/validation';
 
 const router = Router();
@@ -105,5 +109,15 @@ router.get('/categorias/:id', authenticate, getUserRegra, categoriasController.g
 router.post('/categorias', authenticate, getUserRegra, requireAdmin, validate(createCategoriaSchema), categoriasController.createCategoria);
 router.put('/categorias/:id', authenticate, getUserRegra, requireAdmin, validate(updateCategoriaSchema), categoriasController.updateCategoria);
 router.delete('/categorias/:id', authenticate, getUserRegra, requireAdmin, categoriasController.deleteCategoria);
+
+// ============================================
+// VENDAS ONLINE
+// ============================================
+router.get('/vendas-online', authenticate, getUserRegra, validate(getVendasOnlineSchema), vendasOnlineController.getVendas);
+router.get('/vendas-online/resumo', authenticate, getUserRegra, vendasOnlineController.getResumoVendas);
+router.get('/vendas-online/:id', authenticate, getUserRegra, vendasOnlineController.getVendaById);
+router.post('/vendas-online', authenticate, getUserRegra, validate(createVendaOnlineSchema), vendasOnlineController.createVenda);
+router.put('/vendas-online/:id', authenticate, getUserRegra, validate(updateVendaOnlineSchema), vendasOnlineController.updateVenda);
+router.delete('/vendas-online/:id', authenticate, getUserRegra, vendasOnlineController.deleteVenda);
 
 export default router;

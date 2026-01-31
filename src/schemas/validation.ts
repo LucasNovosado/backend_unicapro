@@ -224,3 +224,48 @@ export const getCategoriasSchema = z.object({
     ativo: z.string().transform(val => val === 'true').optional()
   })
 });
+
+// Vendas Online
+export const createVendaOnlineSchema = z.object({
+  body: z.object({
+    data_pedido: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data deve estar no formato YYYY-MM-DD'),
+    hora_pedido: z.string().regex(/^\d{2}:\d{2}$/, 'Hora deve estar no formato HH:MM'),
+    loja_id: z.string().uuid('Loja ID deve ser um UUID válido'),
+    marca_bateria: z.string().min(1, 'Marca da bateria é obrigatória'),
+    amperage: z.number().int().positive('Amperagem deve ser um número positivo'),
+    status: z.enum(['ENTREGUE', 'RETIRADA', 'RETIR.PEND', 'CANCELADA']).default('ENTREGUE'),
+    hora_programada: z.string().regex(/^\d{2}:\d{2}$/, 'Hora programada deve estar no formato HH:MM').optional().nullable(),
+    observacao: z.string().optional().nullable(),
+    valor: z.number().nonnegative('Valor deve ser um número não negativo').optional().nullable(),
+    tipo_venda: z.enum(['CRM', 'Marketplace'], { errorMap: () => ({ message: 'Tipo de venda deve ser CRM ou Marketplace' }) })
+  })
+});
+
+export const updateVendaOnlineSchema = z.object({
+  params: z.object({
+    id: z.string().uuid()
+  }),
+  body: z.object({
+    data_pedido: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data deve estar no formato YYYY-MM-DD').optional(),
+    hora_pedido: z.string().regex(/^\d{2}:\d{2}$/, 'Hora deve estar no formato HH:MM').optional(),
+    loja_id: z.string().uuid('Loja ID deve ser um UUID válido').optional(),
+    marca_bateria: z.string().min(1, 'Marca da bateria é obrigatória').optional(),
+    amperage: z.number().int().positive('Amperagem deve ser um número positivo').optional(),
+    status: z.enum(['ENTREGUE', 'RETIRADA', 'RETIR.PEND', 'CANCELADA']).optional(),
+    hora_programada: z.string().regex(/^\d{2}:\d{2}$/, 'Hora programada deve estar no formato HH:MM').optional().nullable(),
+    observacao: z.string().optional().nullable(),
+    valor: z.number().nonnegative('Valor deve ser um número não negativo').optional().nullable(),
+    tipo_venda: z.enum(['CRM', 'Marketplace']).optional()
+  })
+});
+
+export const getVendasOnlineSchema = z.object({
+  query: z.object({
+    status: z.enum(['ENTREGUE', 'RETIRADA', 'RETIR.PEND', 'CANCELADA']).optional(),
+    loja_id: z.string().uuid().optional(),
+    tipo_venda: z.enum(['CRM', 'Marketplace']).optional(),
+    data_inicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    data_fim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    search: z.string().optional()
+  })
+});
