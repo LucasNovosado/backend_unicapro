@@ -373,7 +373,7 @@ export const getResumoVendas = async (req: RequestWithUser, res: Response) => {
   try {
     let query = supabase
       .from('vendas_online')
-      .select('status, tipo_venda, valor, data_pedido');
+      .select('status, tipo_venda, valor, valor_final, data_pedido');
 
     const { loja_id, data_inicio, data_fim, tipo_venda } = req.query;
 
@@ -405,7 +405,13 @@ export const getResumoVendas = async (req: RequestWithUser, res: Response) => {
     // Calcular resumo
     const resumo = {
       total_vendas: data?.length || 0,
-      total_valor: data?.reduce((sum: number, venda: any) => sum + (parseFloat(venda.valor) || 0), 0) || 0,
+      total_valor: data?.reduce((sum: number, venda: any) => {
+        const valorNumerico =
+          venda.valor_final != null
+            ? parseFloat(venda.valor_final)
+            : parseFloat(venda.valor);
+        return sum + (valorNumerico || 0);
+      }, 0) || 0,
       por_status: {
         ENTREGUE: data?.filter((v: any) => v.status === 'ENTREGUE').length || 0,
         RETIRADA: data?.filter((v: any) => v.status === 'RETIRADA').length || 0,

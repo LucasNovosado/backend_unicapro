@@ -237,6 +237,10 @@ export const createVendaOnlineSchema = z.object({
     hora_programada: z.string().regex(/^\d{2}:\d{2}$/, 'Hora programada deve estar no formato HH:MM').optional().nullable(),
     observacao: z.string().optional().nullable(),
     valor: z.number().nonnegative('Valor deve ser um número não negativo').optional().nullable(),
+    valor_base: z.number().nonnegative('Valor base deve ser um número não negativo').optional().nullable(),
+    valor_final: z.number().nonnegative('Valor final deve ser um número não negativo').optional().nullable(),
+    sem_base_de_troca: z.boolean().optional(),
+    valor_ajustado_manualmente: z.boolean().optional(),
     tipo_venda: z.enum(['CRM', 'Marketplace'], { errorMap: () => ({ message: 'Tipo de venda deve ser CRM ou Marketplace' }) })
   })
 });
@@ -255,6 +259,10 @@ export const updateVendaOnlineSchema = z.object({
     hora_programada: z.string().regex(/^\d{2}:\d{2}$/, 'Hora programada deve estar no formato HH:MM').optional().nullable(),
     observacao: z.string().optional().nullable(),
     valor: z.number().nonnegative('Valor deve ser um número não negativo').optional().nullable(),
+    valor_base: z.number().nonnegative('Valor base deve ser um número não negativo').optional().nullable(),
+    valor_final: z.number().nonnegative('Valor final deve ser um número não negativo').optional().nullable(),
+    sem_base_de_troca: z.boolean().optional(),
+    valor_ajustado_manualmente: z.boolean().optional(),
     tipo_venda: z.enum(['CRM', 'Marketplace']).optional()
   })
 });
