@@ -24,6 +24,10 @@ function getLojasPermitidas(regra: UserRegraContext): string[] {
 
 /** Verifica se o usuário pode acessar a loja */
 function podeAcessarLoja(regra: UserRegraContext, lojaId: string): boolean {
+  // Diretores e admins têm acesso a todas as lojas
+  if (regra?.nivel === 'diretor' || regra?.nivel === 'admin') {
+    return true;
+  }
   const lojas = getLojasPermitidas(regra);
   return lojas.includes(lojaId);
 }
