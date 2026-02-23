@@ -277,3 +277,50 @@ export const getVendasOnlineSchema = z.object({
     search: z.string().optional()
   })
 });
+
+// OC Veículos
+export const getOcsSchema = z.object({
+  query: z.object({
+    loja_id: z.string().uuid().optional(),
+    status: z.enum(['ABERTA', 'EM_ANDAMENTO', 'FECHADA', 'ATRASADA']).optional(),
+    data_inicio: z.string().optional(),
+    data_fim: z.string().optional()
+  })
+});
+
+export const createOcSchema = z.object({
+  body: z.object({
+    loja_id: z.string().uuid('Loja ID inválido'),
+    veiculo_id: z.string().uuid('Veículo ID inválido'),
+    motorista_id: z.string().uuid('Motorista ID inválido').optional(),
+    vendedor_id: z.string().uuid().optional()
+  })
+});
+
+export const fecharOcSchema = z.object({
+  params: z.object({
+    id: z.string().uuid()
+  }),
+  body: z.object({
+    km_retorno: z.number().min(0, 'km_retorno deve ser >= 0')
+  })
+});
+
+export const createLancamentoOcSchema = z.object({
+  params: z.object({
+    id: z.string().uuid()
+  }),
+  body: z.object({
+    categoria: z.enum(['combustivel', 'pedagio', 'manutencao', 'outros']),
+    descricao: z.string().optional(),
+    valor: z.number().min(0, 'Valor deve ser >= 0')
+  })
+});
+
+export const getDashboardOcSchema = z.object({
+  query: z.object({
+    loja_id: z.string().uuid().optional(),
+    data_inicio: z.string().optional(),
+    data_fim: z.string().optional()
+  })
+});

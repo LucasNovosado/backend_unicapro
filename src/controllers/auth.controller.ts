@@ -109,9 +109,13 @@ export const getLojas = async (req: RequestWithUser, res: Response) => {
       .select('*')
       .order('nome');
 
-    // Supervisor só vê suas lojas
-    if (req.userRegra?.nivel === 'supervisor' && req.userRegra.lojas_vinculadas) {
+    // Supervisor/diretor: lojas vinculadas ou todas
+    if (req.userRegra?.nivel === 'supervisor' && req.userRegra.lojas_vinculadas?.length) {
       query = query.in('id', req.userRegra.lojas_vinculadas);
+    }
+    // Loja/motorista: só a própria loja
+    if ((req.userRegra?.nivel === 'loja' || req.userRegra?.nivel === 'motorista') && req.userRegra.loja_id) {
+      query = query.eq('id', req.userRegra.loja_id);
     }
 
     const { data, error } = await query;
