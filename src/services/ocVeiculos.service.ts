@@ -427,13 +427,25 @@ export async function atualizarStatusAtrasadas() {
 
 /** Lista veículos (todos das lojas permitidas ou filtrado por loja_id) */
 export async function listVeiculos(regra: UserRegraContext, lojaId?: string) {
-  const lojas = getLojasPermitidas(regra);
-  if (lojas.length === 0) return [];
-  const idsToUse = lojaId && lojas.includes(lojaId) ? [lojaId] : lojas;
-  const { data: vls, error } = await supabase
+  const isGestorGlobal = regra.nivel === 'diretor' || regra.nivel === 'admin';
+
+  let vlsQuery = supabase
     .from('veiculos_lojas')
-    .select('veiculo_id')
-    .in('loja_id', idsToUse);
+    .select('veiculo_id, loja_id');
+
+  if (isGestorGlobal) {
+    // Diretor/Admin: pode ver veículos de qualquer loja; se lojaId vier, filtra por ela
+    if (lojaId) {
+      vlsQuery = vlsQuery.eq('loja_id', lojaId);
+    }
+  } else {
+    const lojas = getLojasPermitidas(regra);
+    if (lojas.length === 0) return [];
+    const idsToUse = lojaId && lojas.includes(lojaId) ? [lojaId] : lojas;
+    vlsQuery = vlsQuery.in('loja_id', idsToUse);
+  }
+
+  const { data: vls, error } = await vlsQuery;
   if (error) throw error;
   const veiculoIds = [...new Set((vls || []).map((v: any) => v.veiculo_id))];
   if (veiculoIds.length === 0) return [];
@@ -456,6 +468,18 @@ export async function createVeiculo(regra: UserRegraContext, body: {
   if (!podeAcessarLoja(regra, body.loja_id)) throw new Error('Acesso negado à loja');
   const placa = (body.placa || '').trim().toUpperCase();
   if (!placa) throw new Error('Placa é obrigatória');
+
+  // Regra de negócio: não permitir veículos com mesma placa
+  const { data: existentes, error: errExist } = await supabase
+    .from('veiculos')
+    .select('id')
+    .eq('placa', placa)
+    .limit(1);
+  if (errExist) throw errExist;
+  if (existentes && existentes.length > 0) {
+    throw new Error('Já existe veículo cadastrado com essa placa');
+  }
+
   const { data: veiculo, error } = await supabase
     .from('veiculos')
     .insert({
@@ -476,17 +500,28 @@ export async function createVeiculo(regra: UserRegraContext, body: {
 
 /** Lista motoristas (das lojas permitidas ou filtrado por loja_id) */
 export async function listMotoristas(regra: UserRegraContext, lojaId?: string) {
-  const lojas = getLojasPermitidas(regra);
-  if (lojas.length === 0) return [];
-  const idsToUse = lojaId && lojas.includes(lojaId) ? [lojaId] : lojas;
-  const { data, error } = await supabase
+  const isGestorGlobal = regra.nivel === 'diretor' || regra.nivel === 'admin';
+
+  let query = supabase
     .from('motoristas')
     .select(`
       id, nome, ativo, loja_id, vendedor_id, user_regra_id, created_at,
       vendedor:vendedores(id, nome)
     `)
-    .in('loja_id', idsToUse)
     .order('nome');
+
+  if (isGestorGlobal) {
+    if (lojaId) {
+      query = query.eq('loja_id', lojaId);
+    }
+  } else {
+    const lojas = getLojasPermitidas(regra);
+    if (lojas.length === 0) return [];
+    const idsToUse = lojaId && lojas.includes(lojaId) ? [lojaId] : lojas;
+    query = query.in('loja_id', idsToUse);
+  }
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }

@@ -229,6 +229,9 @@ export const createVeiculo = async (req: RequestWithUser, res: Response) => {
     if (e.message?.includes('obrigat')) {
       return res.status(400).json({ error: e.message });
     }
+    if (e.message?.includes('já existe veículo')) {
+      return res.status(409).json({ error: e.message });
+    }
     res.status(500).json({ error: e.message || 'Erro ao criar veículo' });
   }
 };
