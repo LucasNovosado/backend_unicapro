@@ -35,8 +35,11 @@ import {
   getOcsSchema,
   createOcSchema,
   fecharOcSchema,
+  registrarSaidaOcSchema,
   createLancamentoOcSchema,
-  getDashboardOcSchema
+  getDashboardOcSchema,
+  createVeiculoSchema,
+  createMotoristaSchema
 } from '../schemas/validation';
 
 const router = Router();
@@ -135,8 +138,15 @@ router.get('/ocs/motoristas', authenticate, getUserRegra, ocVeiculosController.g
 router.get('/ocs/dashboard', authenticate, getUserRegra, validate(getDashboardOcSchema), ocVeiculosController.getDashboardOc);
 router.get('/ocs/:id', authenticate, getUserRegra, ocVeiculosController.getOcById);
 router.post('/ocs', authenticate, getUserRegra, validate(createOcSchema), ocVeiculosController.createOc);
+router.post('/ocs/:id/registrar-saida', authenticate, getUserRegra, validate(registrarSaidaOcSchema), ocVeiculosController.registrarSaida);
 router.post('/ocs/:id/fechar', authenticate, getUserRegra, validate(fecharOcSchema), ocVeiculosController.fecharOc);
 router.get('/ocs/:id/lancamentos', authenticate, getUserRegra, ocVeiculosController.getLancamentos);
 router.post('/ocs/:id/lancamentos', authenticate, getUserRegra, validate(createLancamentoOcSchema), ocVeiculosController.createLancamento);
+
+router.get('/veiculos', authenticate, getUserRegra, ocVeiculosController.listVeiculos);
+router.post('/veiculos', authenticate, getUserRegra, validate(createVeiculoSchema), ocVeiculosController.createVeiculo);
+router.get('/motoristas/usuarios-motoristas', authenticate, getUserRegra, ocVeiculosController.getUsuariosMotoristas);
+router.get('/motoristas', authenticate, getUserRegra, ocVeiculosController.listMotoristas);
+router.post('/motoristas', authenticate, getUserRegra, validate(createMotoristaSchema), ocVeiculosController.createMotorista);
 
 export default router;

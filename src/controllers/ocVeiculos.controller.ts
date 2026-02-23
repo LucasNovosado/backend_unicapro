@@ -175,3 +175,109 @@ export const getMotoristasByLoja = async (req: RequestWithUser, res: Response) =
     res.status(500).json({ error: e.message || 'Erro ao listar motoristas' });
   }
 };
+
+export const registrarSaida = async (req: RequestWithUser, res: Response) => {
+  try {
+    if (!req.userRegra) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+    const { id } = req.params;
+    const { km_saida } = req.body;
+    const data = await ocService.updateOcSaida(req.userRegra, id, Number(km_saida));
+    res.json(data);
+  } catch (e: any) {
+    if (e.message === 'OC não encontrada' || e.message === 'Acesso negado') {
+      return res.status(404).json({ error: e.message });
+    }
+    if (e.message?.includes('ABERTA')) {
+      return res.status(400).json({ error: e.message });
+    }
+    res.status(500).json({ error: e.message || 'Erro ao registrar saída' });
+  }
+};
+
+export const listVeiculos = async (req: RequestWithUser, res: Response) => {
+  try {
+    if (!req.userRegra) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+    const lojaId = req.query.loja_id as string | undefined;
+    const data = await ocService.listVeiculos(req.userRegra, lojaId);
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Erro ao listar veículos' });
+  }
+};
+
+export const createVeiculo = async (req: RequestWithUser, res: Response) => {
+  try {
+    if (!req.userRegra) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+    const body = req.body;
+    const data = await ocService.createVeiculo(req.userRegra, {
+      placa: body.placa,
+      modelo: body.modelo,
+      apelido: body.apelido,
+      loja_id: body.loja_id,
+    });
+    res.status(201).json(data);
+  } catch (e: any) {
+    if (e.message === 'Acesso negado à loja') {
+      return res.status(403).json({ error: e.message });
+    }
+    if (e.message?.includes('obrigat')) {
+      return res.status(400).json({ error: e.message });
+    }
+    res.status(500).json({ error: e.message || 'Erro ao criar veículo' });
+  }
+};
+
+export const listMotoristas = async (req: RequestWithUser, res: Response) => {
+  try {
+    if (!req.userRegra) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+    const lojaId = req.query.loja_id as string | undefined;
+    const data = await ocService.listMotoristas(req.userRegra, lojaId);
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Erro ao listar motoristas' });
+  }
+};
+
+export const getUsuariosMotoristas = async (req: RequestWithUser, res: Response) => {
+  try {
+    if (!req.userRegra) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+    const data = await ocService.listUsuariosMotoristas(req.userRegra);
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Erro ao listar usuários motoristas' });
+  }
+};
+
+export const createMotorista = async (req: RequestWithUser, res: Response) => {
+  try {
+    if (!req.userRegra) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+    const body = req.body;
+    const data = await ocService.createMotorista(req.userRegra, {
+      nome: body.nome,
+      loja_id: body.loja_id,
+      vendedor_id: body.vendedor_id,
+      user_regra_id: body.user_regra_id,
+    });
+    res.status(201).json(data);
+  } catch (e: any) {
+    if (e.message === 'Acesso negado à loja') {
+      return res.status(403).json({ error: e.message });
+    }
+    if (e.message?.includes('obrigat') || e.message?.includes('apenas um') || e.message?.includes('não encontrado') || e.message?.includes('nivel')) {
+      return res.status(400).json({ error: e.message });
+    }
+    res.status(500).json({ error: e.message || 'Erro ao criar motorista' });
+  }
+};

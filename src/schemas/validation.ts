@@ -306,6 +306,36 @@ export const fecharOcSchema = z.object({
   })
 });
 
+export const registrarSaidaOcSchema = z.object({
+  params: z.object({
+    id: z.string().uuid()
+  }),
+  body: z.object({
+    km_saida: z.number().min(0, 'km_saida deve ser >= 0')
+  })
+});
+
+export const createVeiculoSchema = z.object({
+  body: z.object({
+    placa: z.string().min(1, 'Placa é obrigatória'),
+    modelo: z.string().optional(),
+    apelido: z.string().optional(),
+    loja_id: z.string().uuid('Loja inválida')
+  })
+});
+
+export const createMotoristaSchema = z.object({
+  body: z.object({
+    nome: z.string().optional(),
+    loja_id: z.string().uuid().optional(),
+    vendedor_id: z.string().uuid().optional(),
+    user_regra_id: z.string().uuid().optional()
+  }).refine(
+    (data) => (data.vendedor_id && !data.user_regra_id) || (!data.vendedor_id && data.user_regra_id),
+    { message: 'Informe vendedor_id ou user_regra_id (apenas um)' }
+  )
+});
+
 export const createLancamentoOcSchema = z.object({
   params: z.object({
     id: z.string().uuid()

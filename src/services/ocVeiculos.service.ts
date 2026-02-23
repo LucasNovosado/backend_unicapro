@@ -39,13 +39,14 @@ function applyOcFilter(regra: UserRegraContext, query: any, lojaId?: string) {
   return query.in('loja_id', lojas);
 }
 
-/** Lista OCs com permissão por perfil */
+/** Lista OCs com permissão por perfil. Atualiza OCs em atraso antes de listar. */
 export async function listOcs(regra: UserRegraContext, filters: {
   loja_id?: string;
   status?: string;
   data_inicio?: string;
   data_fim?: string;
 }) {
+  await atualizarStatusAtrasadas();
   let query = supabase
     .from('ocs')
     .select(`
@@ -418,4 +419,121 @@ export async function atualizarStatusAtrasadas() {
     .lt('created_at', limite.toISOString());
   if (error) throw error;
   return data;
+}
+
+/** Lista veículos (todos das lojas permitidas ou filtrado por loja_id) */
+export async function listVeiculos(regra: UserRegraContext, lojaId?: string) {
+  const lojas = getLojasPermitidas(regra);
+  if (lojas.length === 0) return [];
+  const idsToUse = lojaId && lojas.includes(lojaId) ? [lojaId] : lojas;
+  const { data: vls, error } = await supabase
+    .from('veiculos_lojas')
+    .select('veiculo_id')
+    .in('loja_id', idsToUse);
+  if (error) throw error;
+  const veiculoIds = [...new Set((vls || []).map((v: any) => v.veiculo_id))];
+  if (veiculoIds.length === 0) return [];
+  const { data: veiculos, error: err2 } = await supabase
+    .from('veiculos')
+    .select('id, placa, modelo, apelido, ativo, created_at')
+    .in('id', veiculoIds)
+    .order('placa');
+  if (err2) throw err2;
+  return veiculos || [];
+}
+
+/** Cria veículo e vincula à loja (veiculos_lojas) */
+export async function createVeiculo(regra: UserRegraContext, body: {
+  placa: string;
+  modelo?: string;
+  apelido?: string;
+  loja_id: string;
+}) {
+  if (!podeAcessarLoja(regra, body.loja_id)) throw new Error('Acesso negado à loja');
+  const placa = (body.placa || '').trim().toUpperCase();
+  if (!placa) throw new Error('Placa é obrigatória');
+  const { data: veiculo, error } = await supabase
+    .from('veiculos')
+    .insert({
+      placa,
+      modelo: body.modelo?.trim() || null,
+      apelido: body.apelido?.trim() || null,
+      ativo: true,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  const { error: err2 } = await supabase
+    .from('veiculos_lojas')
+    .insert({ veiculo_id: veiculo.id, loja_id: body.loja_id });
+  if (err2) throw err2;
+  return veiculo;
+}
+
+/** Lista motoristas (das lojas permitidas ou filtrado por loja_id) */
+export async function listMotoristas(regra: UserRegraContext, lojaId?: string) {
+  const lojas = getLojasPermitidas(regra);
+  if (lojas.length === 0) return [];
+  const idsToUse = lojaId && lojas.includes(lojaId) ? [lojaId] : lojas;
+  const { data, error } = await supabase
+    .from('motoristas')
+    .select(`
+      id, nome, ativo, loja_id, vendedor_id, user_regra_id, created_at,
+      vendedor:vendedores(id, nome)
+    `)
+    .in('loja_id', idsToUse)
+    .order('nome');
+  if (error) throw error;
+  return data || [];
+}
+
+/** Cria motorista (vendedor_id OU user_regra_id) */
+export async function createMotorista(regra: UserRegraContext, body: {
+  nome?: string;
+  loja_id?: string;
+  vendedor_id?: string;
+  user_regra_id?: string;
+}) {
+  const hasVendedor = !!body.vendedor_id;
+  const hasUserRegra = !!body.user_regra_id;
+  if (hasVendedor === hasUserRegra) throw new Error('Informe vendedor_id ou user_regra_id (apenas um)');
+  if (body.loja_id && !podeAcessarLoja(regra, body.loja_id)) throw new Error('Acesso negado à loja');
+  if (body.vendedor_id) {
+    const { data: v } = await supabase.from('vendedores').select('loja_id').eq('id', body.vendedor_id).single();
+    if (!v) throw new Error('Vendedor não encontrado');
+    if (body.loja_id && v.loja_id !== body.loja_id) throw new Error('Vendedor não pertence à loja');
+  }
+  if (body.user_regra_id) {
+    const { data: u } = await supabase.from('users_regras').select('id, nivel').eq('id', body.user_regra_id).single();
+    if (!u) throw new Error('Usuário não encontrado');
+    if (u.nivel !== 'motorista') throw new Error('O user_regra deve ter nivel motorista');
+  }
+  const { data, error } = await supabase
+    .from('motoristas')
+    .insert({
+      nome: body.nome?.trim() || null,
+      ativo: true,
+      loja_id: body.loja_id || null,
+      vendedor_id: body.vendedor_id || null,
+      user_regra_id: body.user_regra_id || null,
+    })
+    .select(`
+      id, nome, ativo, loja_id, vendedor_id, user_regra_id, created_at,
+      vendedor:vendedores(id, nome)
+    `)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+/** Lista users_regras com nivel = motorista (para dropdown cadastro motorista) */
+export async function listUsuariosMotoristas(regra: UserRegraContext) {
+  getLojasPermitidas(regra);
+  const { data, error } = await supabase
+    .from('users_regras')
+    .select('id, nome, email')
+    .eq('nivel', 'motorista')
+    .order('nome');
+  if (error) throw error;
+  return data || [];
 }
