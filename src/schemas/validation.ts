@@ -320,6 +320,7 @@ export const createVeiculoSchema = z.object({
     placa: z.string().min(1, 'Placa é obrigatória'),
     modelo: z.string().optional(),
     apelido: z.string().optional(),
+    renavam: z.string().optional(),
     loja_id: z.string().uuid('Loja inválida')
   })
 });

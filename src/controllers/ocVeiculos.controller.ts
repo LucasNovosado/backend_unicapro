@@ -219,6 +219,7 @@ export const createVeiculo = async (req: RequestWithUser, res: Response) => {
       placa: body.placa,
       modelo: body.modelo,
       apelido: body.apelido,
+      renavam: body.renavam,
       loja_id: body.loja_id,
     });
     res.status(201).json(data);

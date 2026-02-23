@@ -58,7 +58,7 @@ export async function listOcs(regra: UserRegraContext, filters: {
       km_saida, km_retorno, km_total, status, data_saida, data_retorno,
       created_by, created_at,
       loja:lojas(id, nome, cidade, estado),
-      veiculo:veiculos(id, placa, modelo, apelido),
+      veiculo:veiculos(id, placa, modelo, apelido, renavam),
       motorista:motoristas(id, nome, vendedor_id, user_regra_id)
     `)
     .order('created_at', { ascending: false });
@@ -103,7 +103,7 @@ export async function getOcById(regra: UserRegraContext, ocId: string) {
     .select(`
       *,
       loja:lojas(id, nome, cidade, estado),
-      veiculo:veiculos(id, placa, modelo, apelido),
+      veiculo:veiculos(id, placa, modelo, apelido, renavam),
       motorista:motoristas(id, nome, vendedor_id, user_regra_id, loja_id)
     `)
     .eq('id', ocId)
@@ -133,7 +133,7 @@ export async function getVeiculosByLoja(regra: UserRegraContext, lojaId: string)
   if (ids.length === 0) return [];
   const { data: veiculos, error: err2 } = await supabase
     .from('veiculos')
-    .select('id, placa, modelo, apelido, ativo')
+    .select('id, placa, modelo, apelido, renavam, ativo')
     .in('id', ids)
     .eq('ativo', true);
   if (err2) throw err2;
@@ -211,7 +211,7 @@ export async function createOc(regra: UserRegraContext, createdBy: string, body:
     .select(`
       *,
       loja:lojas(id, nome),
-      veiculo:veiculos(id, placa, modelo, apelido),
+      veiculo:veiculos(id, placa, modelo, apelido, renavam),
       motorista:motoristas(id, nome)
     `)
     .single();
@@ -451,7 +451,7 @@ export async function listVeiculos(regra: UserRegraContext, lojaId?: string) {
   if (veiculoIds.length === 0) return [];
   const { data: veiculos, error: err2 } = await supabase
     .from('veiculos')
-    .select('id, placa, modelo, apelido, ativo, created_at')
+    .select('id, placa, modelo, apelido, renavam, ativo, created_at')
     .in('id', veiculoIds)
     .order('placa');
   if (err2) throw err2;
@@ -463,6 +463,7 @@ export async function createVeiculo(regra: UserRegraContext, body: {
   placa: string;
   modelo?: string;
   apelido?: string;
+  renavam?: string;
   loja_id: string;
 }) {
   if (!podeAcessarLoja(regra, body.loja_id)) throw new Error('Acesso negado à loja');
@@ -486,6 +487,7 @@ export async function createVeiculo(regra: UserRegraContext, body: {
       placa,
       modelo: body.modelo?.trim() || null,
       apelido: body.apelido?.trim() || null,
+      renavam: body.renavam?.trim() || null,
       ativo: true,
     })
     .select()
