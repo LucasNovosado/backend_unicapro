@@ -426,7 +426,7 @@ export async function atualizarStatusAtrasadas() {
 }
 
 /** Lista veículos (todos das lojas permitidas ou filtrado por loja_id) */
-export async function listVeiculos(regra: UserRegraContext, lojaId?: string) {
+export async function listVeiculos(regra: UserRegraContext, lojaId?: string, status?: 'ativo' | 'inativo') {
   const isGestorGlobal = regra.nivel === 'diretor' || regra.nivel === 'admin';
 
   let vlsQuery = supabase
@@ -449,11 +449,16 @@ export async function listVeiculos(regra: UserRegraContext, lojaId?: string) {
   if (error) throw error;
   const veiculoIds = [...new Set((vls || []).map((v: any) => v.veiculo_id))];
   if (veiculoIds.length === 0) return [];
-  const { data: veiculos, error: err2 } = await supabase
+  let veicQuery = supabase
     .from('veiculos')
     .select('id, placa, modelo, apelido, renavam, ativo, created_at')
-    .in('id', veiculoIds)
-    .order('placa');
+    .in('id', veiculoIds);
+  if (status === 'ativo') {
+    veicQuery = veicQuery.eq('ativo', true);
+  } else if (status === 'inativo') {
+    veicQuery = veicQuery.eq('ativo', false);
+  }
+  const { data: veiculos, error: err2 } = await veicQuery.order('placa');
   if (err2) throw err2;
   return veiculos || [];
 }
@@ -498,6 +503,114 @@ export async function createVeiculo(regra: UserRegraContext, body: {
     .insert({ veiculo_id: veiculo.id, loja_id: body.loja_id });
   if (err2) throw err2;
   return veiculo;
+}
+
+/** Busca veículo por ID com verificação de acesso às lojas vinculadas */
+export async function getVeiculoById(regra: UserRegraContext, veiculoId: string) {
+  const { data: veiculo, error } = await supabase
+    .from('veiculos')
+    .select('id, placa, modelo, apelido, renavam, ativo, created_at')
+    .eq('id', veiculoId)
+    .single();
+  if (error || !veiculo) throw new Error('Veículo não encontrado');
+
+  const { data: links, error: errLinks } = await supabase
+    .from('veiculos_lojas')
+    .select('loja_id')
+    .eq('veiculo_id', veiculoId);
+  if (errLinks) throw errLinks;
+  const lojaIds = (links || []).map((l: any) => l.loja_id);
+
+  const lojasPermitidas = getLojasPermitidas(regra);
+  const isGestorGlobal = regra.nivel === 'diretor' || regra.nivel === 'admin';
+
+  if (!isGestorGlobal) {
+    if (lojaIds.length === 0) {
+      throw new Error('Acesso negado à loja');
+    }
+    const temAcesso = lojaIds.some((id: string) => lojasPermitidas.includes(id));
+    if (!temAcesso) {
+      throw new Error('Acesso negado à loja');
+    }
+  }
+
+  return veiculo;
+}
+
+/** Atualiza dados do veículo (inclusive ativo/inativo) */
+export async function updateVeiculo(regra: UserRegraContext, veiculoId: string, body: {
+  loja_id?: string;
+  placa?: string;
+  modelo?: string;
+  apelido?: string;
+  renavam?: string;
+  ativo?: boolean;
+}) {
+  const veiculo = await getVeiculoById(regra, veiculoId);
+
+  const updates: any = {};
+
+  if (body.placa !== undefined) {
+    const placa = (body.placa || '').trim().toUpperCase();
+    if (!placa) throw new Error('Placa é obrigatória');
+
+    const { data: existentes, error: errExist } = await supabase
+      .from('veiculos')
+      .select('id')
+      .eq('placa', placa)
+      .neq('id', veiculoId)
+      .limit(1);
+    if (errExist) throw errExist;
+    if (existentes && existentes.length > 0) {
+      throw new Error('Já existe veículo cadastrado com essa placa');
+    }
+
+    updates.placa = placa;
+  }
+
+  if (body.modelo !== undefined) {
+    updates.modelo = body.modelo?.trim() || null;
+  }
+  if (body.apelido !== undefined) {
+    updates.apelido = body.apelido?.trim() || null;
+  }
+  if (body.renavam !== undefined) {
+    const renavam = body.renavam?.trim() || null;
+    if (renavam) {
+      const onlyDigits = /^[0-9]{9,12}$/;
+      if (!onlyDigits.test(renavam)) {
+        throw new Error('Renavam inválido');
+      }
+    }
+    updates.renavam = renavam;
+  }
+  if (body.ativo !== undefined) {
+    updates.ativo = body.ativo;
+  }
+
+  const { data: updated, error } = await supabase
+    .from('veiculos')
+    .update(updates)
+    .eq('id', veiculoId)
+    .select('id, placa, modelo, apelido, renavam, ativo, created_at')
+    .single();
+  if (error) throw error;
+
+  // Opcionalmente permitir trocar a loja principal
+  if (body.loja_id) {
+    if (!podeAcessarLoja(regra, body.loja_id)) throw new Error('Acesso negado à loja');
+    const { error: errDel } = await supabase
+      .from('veiculos_lojas')
+      .delete()
+      .eq('veiculo_id', veiculoId);
+    if (errDel) throw errDel;
+    const { error: errIns } = await supabase
+      .from('veiculos_lojas')
+      .insert({ veiculo_id: veiculoId, loja_id: body.loja_id });
+    if (errIns) throw errIns;
+  }
+
+  return updated || veiculo;
 }
 
 /** Lista motoristas (das lojas permitidas ou filtrado por loja_id) */

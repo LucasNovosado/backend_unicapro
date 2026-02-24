@@ -202,10 +202,57 @@ export const listVeiculos = async (req: RequestWithUser, res: Response) => {
       return res.status(401).json({ error: 'Usuário não autenticado' });
     }
     const lojaId = req.query.loja_id as string | undefined;
-    const data = await ocService.listVeiculos(req.userRegra, lojaId);
+    const status = req.query.status as 'ativo' | 'inativo' | undefined;
+    const data = await ocService.listVeiculos(req.userRegra, lojaId, status);
     res.json(data);
   } catch (e: any) {
     res.status(500).json({ error: e.message || 'Erro ao listar veículos' });
+  }
+};
+
+export const getVeiculo = async (req: RequestWithUser, res: Response) => {
+  try {
+    if (!req.userRegra) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+    const { id } = req.params;
+    const data = await ocService.getVeiculoById(req.userRegra, id);
+    res.json(data);
+  } catch (e: any) {
+    if (e.message === 'Veículo não encontrado' || e.message === 'Acesso negado à loja') {
+      return res.status(404).json({ error: e.message });
+    }
+    res.status(500).json({ error: e.message || 'Erro ao buscar veículo' });
+  }
+};
+
+export const updateVeiculo = async (req: RequestWithUser, res: Response) => {
+  try {
+    if (!req.userRegra) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+    const { id } = req.params;
+    const body = req.body;
+    const data = await ocService.updateVeiculo(req.userRegra, id, {
+      loja_id: body.loja_id,
+      placa: body.placa,
+      modelo: body.modelo,
+      apelido: body.apelido,
+      renavam: body.renavam,
+      ativo: body.ativo,
+    });
+    res.json(data);
+  } catch (e: any) {
+    if (e.message === 'Acesso negado à loja' || e.message === 'Veículo não encontrado') {
+      return res.status(403).json({ error: e.message });
+    }
+    if (e.message?.includes('Placa é obrigatória') || e.message?.includes('Renavam inválido')) {
+      return res.status(400).json({ error: e.message });
+    }
+    if (e.message?.includes('já existe veículo')) {
+      return res.status(409).json({ error: e.message });
+    }
+    res.status(500).json({ error: e.message || 'Erro ao atualizar veículo' });
   }
 };
 

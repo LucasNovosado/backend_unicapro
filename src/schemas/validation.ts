@@ -325,6 +325,26 @@ export const createVeiculoSchema = z.object({
   })
 });
 
+export const getVeiculoSchema = z.object({
+  params: z.object({
+    id: z.string().uuid()
+  })
+});
+
+export const updateVeiculoSchema = z.object({
+  params: z.object({
+    id: z.string().uuid()
+  }),
+  body: z.object({
+    loja_id: z.string().uuid().optional(),
+    placa: z.string().min(1, 'Placa é obrigatória').optional(),
+    modelo: z.string().optional(),
+    apelido: z.string().optional(),
+    renavam: z.string().optional(),
+    ativo: z.boolean().optional()
+  })
+});
+
 export const createMotoristaSchema = z.object({
   body: z.object({
     nome: z.string().optional(),

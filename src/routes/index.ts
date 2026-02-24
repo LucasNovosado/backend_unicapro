@@ -39,6 +39,8 @@ import {
   createLancamentoOcSchema,
   getDashboardOcSchema,
   createVeiculoSchema,
+  getVeiculoSchema,
+  updateVeiculoSchema,
   createMotoristaSchema
 } from '../schemas/validation';
 
@@ -144,7 +146,9 @@ router.get('/ocs/:id/lancamentos', authenticate, getUserRegra, ocVeiculosControl
 router.post('/ocs/:id/lancamentos', authenticate, getUserRegra, validate(createLancamentoOcSchema), ocVeiculosController.createLancamento);
 
 router.get('/veiculos', authenticate, getUserRegra, ocVeiculosController.listVeiculos);
+router.get('/veiculos/:id', authenticate, getUserRegra, validate(getVeiculoSchema), ocVeiculosController.getVeiculo);
 router.post('/veiculos', authenticate, getUserRegra, validate(createVeiculoSchema), ocVeiculosController.createVeiculo);
+router.put('/veiculos/:id', authenticate, getUserRegra, validate(updateVeiculoSchema), ocVeiculosController.updateVeiculo);
 router.get('/motoristas/usuarios-motoristas', authenticate, getUserRegra, ocVeiculosController.getUsuariosMotoristas);
 router.get('/motoristas', authenticate, getUserRegra, ocVeiculosController.listMotoristas);
 router.post('/motoristas', authenticate, getUserRegra, validate(createMotoristaSchema), ocVeiculosController.createMotorista);
