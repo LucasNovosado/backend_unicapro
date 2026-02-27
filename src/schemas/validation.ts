@@ -345,6 +345,12 @@ export const updateVeiculoSchema = z.object({
   })
 });
 
+export const deleteVeiculoSchema = z.object({
+  params: z.object({
+    id: z.string().uuid()
+  })
+});
+
 export const createMotoristaSchema = z.object({
   body: z.object({
     nome: z.string().optional(),

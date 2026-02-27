@@ -613,6 +613,35 @@ export async function updateVeiculo(regra: UserRegraContext, veiculoId: string, 
   return updated || veiculo;
 }
 
+/** Remove veículo se não possuir OCs vinculadas */
+export async function deleteVeiculo(regra: UserRegraContext, veiculoId: string) {
+  await getVeiculoById(regra, veiculoId);
+
+  const { data: ocs, error: errOcs } = await supabase
+    .from('ocs')
+    .select('id')
+    .eq('veiculo_id', veiculoId)
+    .limit(1);
+  if (errOcs) throw errOcs;
+  if (ocs && ocs.length > 0) {
+    throw new Error('Não é possível remover veículo com OCs vinculadas');
+  }
+
+  const { error: errLinks } = await supabase
+    .from('veiculos_lojas')
+    .delete()
+    .eq('veiculo_id', veiculoId);
+  if (errLinks) throw errLinks;
+
+  const { error } = await supabase
+    .from('veiculos')
+    .delete()
+    .eq('id', veiculoId);
+  if (error) throw error;
+
+  return true;
+}
+
 /** Lista motoristas (das lojas permitidas ou filtrado por loja_id) */
 export async function listMotoristas(regra: UserRegraContext, lojaId?: string) {
   const isGestorGlobal = regra.nivel === 'diretor' || regra.nivel === 'admin';

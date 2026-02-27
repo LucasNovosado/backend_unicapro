@@ -256,6 +256,25 @@ export const updateVeiculo = async (req: RequestWithUser, res: Response) => {
   }
 };
 
+export const deleteVeiculo = async (req: RequestWithUser, res: Response) => {
+  try {
+    if (!req.userRegra) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+    const { id } = req.params;
+    await ocService.deleteVeiculo(req.userRegra, id);
+    res.status(204).send();
+  } catch (e: any) {
+    if (e.message === 'Acesso negado à loja' || e.message === 'Veículo não encontrado') {
+      return res.status(403).json({ error: e.message });
+    }
+    if (e.message?.includes('OCs vinculadas')) {
+      return res.status(400).json({ error: e.message });
+    }
+    res.status(500).json({ error: e.message || 'Erro ao remover veículo' });
+  }
+};
+
 export const createVeiculo = async (req: RequestWithUser, res: Response) => {
   try {
     if (!req.userRegra) {
