@@ -187,8 +187,39 @@ export async function createOc(regra: UserRegraContext, createdBy: string, body:
     const { data: motorista } = await supabase.from('motoristas').select('vendedor_id').eq('id', mid).single();
     vendedorId = motorista?.vendedor_id || undefined;
   } else {
-    if (!motoristaId) throw new Error('motorista_id é obrigatório');
-    const { data: motorista } = await supabase.from('motoristas').select('vendedor_id').eq('id', motoristaId).single();
+    // Regra nova: aceitar motorista_id OU vendedor_id
+    // Se não veio motorista_id mas veio vendedor_id, localizar/criar motorista vinculado a esse vendedor
+    if (!motoristaId && vendedorId) {
+      // Tenta achar motorista existente para esse vendedor na loja
+      const { data: existingMotorista } = await supabase
+        .from('motoristas')
+        .select('id')
+        .eq('loja_id', lojaId)
+        .eq('vendedor_id', vendedorId)
+        .single();
+
+      if (existingMotorista?.id) {
+        motoristaId = existingMotorista.id;
+      } else {
+        // Cria motorista vinculado ao vendedor e à loja
+        const novoMotorista = await createMotorista(regra, {
+          loja_id: lojaId,
+          vendedor_id: vendedorId,
+        });
+        motoristaId = novoMotorista.id;
+      }
+    }
+
+    if (!motoristaId && !vendedorId) {
+      throw new Error('motorista_id é obrigatório');
+    }
+
+    const { data: motorista } = await supabase
+      .from('motoristas')
+      .select('vendedor_id')
+      .eq('id', motoristaId as string)
+      .single();
+
     vendedorId = vendedorId ?? motorista?.vendedor_id ?? undefined;
   }
 
