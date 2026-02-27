@@ -59,7 +59,14 @@ export async function listOcs(regra: UserRegraContext, filters: {
       created_by, created_at,
       loja:lojas(id, nome, cidade, estado),
       veiculo:veiculos(id, placa, modelo, apelido, renavam),
-      motorista:motoristas(id, nome, vendedor_id, user_regra_id)
+      motorista:motoristas(
+        id,
+        nome,
+        vendedor_id,
+        user_regra_id,
+        loja_id,
+        vendedor:vendedores(id, nome)
+      )
     `)
     .order('created_at', { ascending: false });
 
