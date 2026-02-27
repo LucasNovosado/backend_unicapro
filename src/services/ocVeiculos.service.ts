@@ -85,12 +85,14 @@ export async function listOcs(regra: UserRegraContext, filters: {
     query = query.eq('status', filters.status);
   }
   if (filters.data_inicio) {
-    // Filtro de período deve considerar a data de criação da OC,
-    // para que OCs ainda ABERTAS (sem data_saida) também apareçam.
-    query = query.gte('created_at', filters.data_inicio);
+    // Filtro por período deve considerar a data de criação da OC (created_at)
+    // e incluir o dia inteiro (00:00 até 23:59:59)
+    const inicio = `${filters.data_inicio}T00:00:00`;
+    query = query.gte('created_at', inicio);
   }
   if (filters.data_fim) {
-    query = query.lte('created_at', filters.data_fim);
+    const fim = `${filters.data_fim}T23:59:59.999`;
+    query = query.lte('created_at', fim);
   }
 
   const { data, error } = await query;
