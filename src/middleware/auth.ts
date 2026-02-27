@@ -12,7 +12,7 @@ export interface RequestWithUser extends Request {
   user?: AuthUser;
   userRegra?: {
     id: string;
-    nivel: 'diretor' | 'supervisor' | 'loja' | 'motorista' | 'admin';
+    nivel: 'diretor' | 'gerente' | 'supervisor' | 'loja' | 'motorista' | 'admin';
     loja_id?: string | null;
     lojas_vinculadas?: string[];
   };
@@ -70,21 +70,25 @@ export const getUserRegra = async (
       return res.status(403).json({ error: 'Usuário não encontrado no sistema' });
     }
 
-    // Buscar lojas vinculadas: supervisor/diretor/admin via users_regras_lojas; loja/motorista via loja_id
+    // Buscar lojas vinculadas: supervisor/gerente via users_regras_lojas; loja/motorista via loja_id
+    // Diretor e admin têm acesso global — não precisam de lojas_vinculadas
     let lojasVinculadas: string[] = [];
-    if (['supervisor', 'diretor', 'admin'].includes(userRegra.nivel || '')) {
+    if (['supervisor', 'gerente'].includes(userRegra.nivel || '')) {
       const { data: lojas } = await supabase
         .from('users_regras_lojas')
         .select('loja_id')
         .eq('user_regra_id', userRegra.id);
       lojasVinculadas = lojas?.map((l: { loja_id: string }) => l.loja_id) || [];
+    } else if (['diretor', 'admin'].includes(userRegra.nivel || '')) {
+      // Gestor global: lojas_vinculadas vazio — o serviço não filtra por loja para esses níveis
+      lojasVinculadas = [];
     } else if (userRegra.loja_id) {
       lojasVinculadas = [userRegra.loja_id];
     }
 
     req.userRegra = {
       id: userRegra.id,
-      nivel: userRegra.nivel as 'diretor' | 'supervisor' | 'loja' | 'motorista' | 'admin',
+      nivel: userRegra.nivel as 'diretor' | 'gerente' | 'supervisor' | 'loja' | 'motorista' | 'admin',
       loja_id: userRegra.loja_id || undefined,
       lojas_vinculadas: lojasVinculadas
     };
