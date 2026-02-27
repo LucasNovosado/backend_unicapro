@@ -115,7 +115,14 @@ export async function getOcById(regra: UserRegraContext, ocId: string) {
       *,
       loja:lojas(id, nome, cidade, estado),
       veiculo:veiculos(id, placa, modelo, apelido, renavam),
-      motorista:motoristas(id, nome, vendedor_id, user_regra_id, loja_id)
+      motorista:motoristas(
+        id,
+        nome,
+        vendedor_id,
+        user_regra_id,
+        loja_id,
+        vendedor:vendedores(id, nome)
+      )
     `)
     .eq('id', ocId)
     .single();
@@ -254,7 +261,14 @@ export async function createOc(regra: UserRegraContext, createdBy: string, body:
       *,
       loja:lojas(id, nome),
       veiculo:veiculos(id, placa, modelo, apelido, renavam),
-      motorista:motoristas(id, nome)
+      motorista:motoristas(
+        id,
+        nome,
+        vendedor_id,
+        user_regra_id,
+        loja_id,
+        vendedor:vendedores(id, nome)
+      )
     `)
     .single();
 
