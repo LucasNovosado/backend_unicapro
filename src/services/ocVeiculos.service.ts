@@ -40,14 +40,18 @@ function podeAcessarLoja(regra: UserRegraContext, lojaId: string): boolean {
   return lojas.includes(lojaId);
 }
 
-/** Filtra query de OCs por permissão (loja, motorista, supervisor, diretor) */
+/** Filtra query de OCs por permissão (loja, motorista, supervisor, diretor, gerente) */
 function applyOcFilter(regra: UserRegraContext, query: any, lojaId?: string) {
-  const lojas = getLojasPermitidas(regra);
-  if (lojas.length === 0) return query.eq('id', '00000000-0000-0000-0000-000000000000'); // nenhum resultado
-  if (regra.nivel === 'motorista') {
-    // Motorista: buscar motorista pelo user_regra_id e filtrar OCs onde motorista_id = esse id
-    return query; // Filtro por motorista será aplicado após buscar motorista_id
+  // Gestores globais (diretor, gerente, admin) veem todas as OCs sem filtro de loja
+  if (isGestorGlobalFn(regra)) {
+    return query;
   }
+  if (regra.nivel === 'motorista') {
+    // Filtro por motorista será aplicado após buscar motorista_id
+    return query;
+  }
+  const lojas = getLojasPermitidas(regra);
+  if (lojas.length === 0) return query.eq('id', '00000000-0000-0000-0000-000000000000');
   return query.in('loja_id', lojas);
 }
 
@@ -353,14 +357,16 @@ export async function createLancamento(regra: UserRegraContext, ocId: string, bo
   return data;
 }
 
-/** Dashboard: KPIs agregados (diretor/supervisor - múltiplas lojas) */
+/** Dashboard: KPIs agregados (diretor/gerente/supervisor - múltiplas lojas) */
 export async function getDashboardOc(regra: UserRegraContext, filters: {
   loja_id?: string;
   data_inicio?: string;
   data_fim?: string;
 }) {
+  const isGestorGlobal = isGestorGlobalFn(regra);
   const lojas = getLojasPermitidas(regra);
-  if (lojas.length === 0) {
+
+  if (!isGestorGlobal && lojas.length === 0) {
     return {
       total_ocs: 0,
       total_fechadas: 0,
@@ -376,9 +382,15 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
     };
   }
 
-  let query = supabase.from('ocs').select('id, loja_id, status, km_saida, km_retorno, km_total, created_at').in('loja_id', lojas);
-  if (filters.loja_id && lojas.includes(filters.loja_id)) {
-    query = query.eq('loja_id', filters.loja_id);
+  // Gestor global: sem filtro de loja (ou filtra apenas pela loja_id do request)
+  let query = isGestorGlobal
+    ? supabase.from('ocs').select('id, loja_id, status, km_saida, km_retorno, km_total, created_at')
+    : supabase.from('ocs').select('id, loja_id, status, km_saida, km_retorno, km_total, created_at').in('loja_id', lojas);
+
+  if (filters.loja_id) {
+    if (isGestorGlobal || lojas.includes(filters.loja_id)) {
+      query = query.eq('loja_id', filters.loja_id);
+    }
   }
   if (filters.data_inicio) query = query.gte('created_at', filters.data_inicio);
   if (filters.data_fim) query = query.lte('created_at', filters.data_fim);
