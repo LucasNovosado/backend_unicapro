@@ -23,9 +23,17 @@ function getLojasPermitidas(regra: UserRegraContext): string[] {
 }
 
 /** Verifica se o usuário pode acessar a loja */
+function isGestorGlobalFn(regra: UserRegraContext): boolean {
+  return (
+    regra?.nivel === 'diretor' ||
+    regra?.nivel === 'gerente' ||
+    regra?.nivel === 'admin'
+  );
+}
+
 function podeAcessarLoja(regra: UserRegraContext, lojaId: string): boolean {
-  // Diretores e admins têm acesso a todas as lojas
-  if (regra?.nivel === 'diretor' || regra?.nivel === 'admin') {
+  // Diretores, gerentes e admins têm acesso a todas as lojas no módulo OC
+  if (isGestorGlobalFn(regra)) {
     return true;
   }
   const lojas = getLojasPermitidas(regra);
@@ -122,7 +130,8 @@ export async function getOcById(regra: UserRegraContext, ocId: string) {
         user_regra_id,
         loja_id,
         vendedor:vendedores(id, nome)
-      )
+      ),
+      vendedor:vendedores(id, nome)
     `)
     .eq('id', ocId)
     .single();
@@ -261,14 +270,7 @@ export async function createOc(regra: UserRegraContext, createdBy: string, body:
       *,
       loja:lojas(id, nome),
       veiculo:veiculos(id, placa, modelo, apelido, renavam),
-      motorista:motoristas(
-        id,
-        nome,
-        vendedor_id,
-        user_regra_id,
-        loja_id,
-        vendedor:vendedores(id, nome)
-      )
+      motorista:motoristas(id, nome)
     `)
     .single();
 
@@ -483,7 +485,7 @@ export async function atualizarStatusAtrasadas() {
 
 /** Lista veículos (todos das lojas permitidas ou filtrado por loja_id) */
 export async function listVeiculos(regra: UserRegraContext, lojaId?: string, status?: 'ativo' | 'inativo') {
-  const isGestorGlobal = regra.nivel === 'diretor' || regra.nivel === 'admin';
+  const isGestorGlobal = isGestorGlobalFn(regra);
 
   let vlsQuery = supabase
     .from('veiculos_lojas')
@@ -588,7 +590,7 @@ export async function getVeiculoById(regra: UserRegraContext, veiculoId: string)
   const lojaIds = (links || []).map((l: any) => l.loja_id);
 
   const lojasPermitidas = getLojasPermitidas(regra);
-  const isGestorGlobal = regra.nivel === 'diretor' || regra.nivel === 'admin';
+  const isGestorGlobal = isGestorGlobalFn(regra);
 
   if (!isGestorGlobal) {
     if (lojaIds.length === 0) {
@@ -710,7 +712,7 @@ export async function deleteVeiculo(regra: UserRegraContext, veiculoId: string) 
 
 /** Lista motoristas (das lojas permitidas ou filtrado por loja_id) */
 export async function listMotoristas(regra: UserRegraContext, lojaId?: string) {
-  const isGestorGlobal = regra.nivel === 'diretor' || regra.nivel === 'admin';
+  const isGestorGlobal = isGestorGlobalFn(regra);
 
   let query = supabase
     .from('motoristas')
