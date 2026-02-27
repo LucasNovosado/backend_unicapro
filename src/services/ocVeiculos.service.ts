@@ -22,27 +22,26 @@ function getLojasPermitidas(regra: UserRegraContext): string[] {
   return regra.lojas_vinculadas;
 }
 
-/** Verifica se o usuário pode acessar a loja */
+/** Diretores, gerentes e admins têm acesso global — sem filtro de loja */
+function isGestorGlobalFn(regra: UserRegraContext): boolean {
+  return (
+    regra?.nivel === 'diretor' ||
+    regra?.nivel === 'gerente' ||
+    regra?.nivel === 'admin'
+  );
+}
+
+/** Verifica se o usuário pode acessar uma loja específica */
 function podeAcessarLoja(regra: UserRegraContext, lojaId: string): boolean {
-  // Diretores e admins têm acesso a todas as lojas
-  if (regra?.nivel === 'diretor' || regra?.nivel === 'admin') {
-    return true;
-  }
+  if (isGestorGlobalFn(regra)) return true;
   const lojas = getLojasPermitidas(regra);
   return lojas.includes(lojaId);
 }
 
-/** Filtra query de OCs por permissão (loja, motorista, supervisor, diretor, gerente) */
+/** Filtra query de OCs por permissão */
 function applyOcFilter(regra: UserRegraContext, query: any) {
-  // Gestores globais (diretor, gerente, admin) veem TODAS as OCs sem filtro de loja
-  if (isGestorGlobalFn(regra)) {
-    return query;
-  }
-  // Motorista: filtro por motorista_id aplicado depois em listOcs
-  if (regra.nivel === 'motorista') {
-    return query;
-  }
-  // Supervisor / loja: restringir às lojas vinculadas
+  if (isGestorGlobalFn(regra)) return query;
+  if (regra.nivel === 'motorista') return query;
   const lojas = getLojasPermitidas(regra);
   if (lojas.length === 0) return query.eq('id', '00000000-0000-0000-0000-000000000000');
   return query.in('loja_id', lojas);
