@@ -448,6 +448,12 @@ export async function listVeiculos(regra: UserRegraContext, lojaId?: string, sta
   const { data: vls, error } = await vlsQuery;
   if (error) throw error;
   const veiculoIds = [...new Set((vls || []).map((v: any) => v.veiculo_id))];
+  const lojaPorVeiculo: Record<string, string> = {};
+  (vls || []).forEach((v: any) => {
+    if (!lojaPorVeiculo[v.veiculo_id]) {
+      lojaPorVeiculo[v.veiculo_id] = v.loja_id;
+    }
+  });
   if (veiculoIds.length === 0) return [];
   let veicQuery = supabase
     .from('veiculos')
@@ -460,7 +466,11 @@ export async function listVeiculos(regra: UserRegraContext, lojaId?: string, sta
   }
   const { data: veiculos, error: err2 } = await veicQuery.order('placa');
   if (err2) throw err2;
-  return veiculos || [];
+  const list = veiculos || [];
+  return list.map((v: any) => ({
+    ...v,
+    loja_id: lojaPorVeiculo[v.id] || null,
+  }));
 }
 
 /** Cria veículo e vincula à loja (veiculos_lojas) */
