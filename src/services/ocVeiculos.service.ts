@@ -61,12 +61,72 @@ function aplicarStatusAtrasadaLogico<T extends { status: OcStatus; data_saida?: 
   return oc;
 }
 
+/** Calcula data de início (segunda) e fim (domingo) da semana para uma data de referência */
+function getIntervaloSemana(date: Date): { inicio: string; fim: string } {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay(); // 0=domingo,1=segunda,...
+  const diffToMonday = (day === 0 ? -6 : 1 - day);
+  const inicioDate = new Date(d);
+  inicioDate.setDate(d.getDate() + diffToMonday);
+  const fimDate = new Date(inicioDate);
+  fimDate.setDate(inicioDate.getDate() + 6);
+  const inicio = inicioDate.toISOString().slice(0, 10);
+  const fim = fimDate.toISOString().slice(0, 10);
+  return { inicio, fim };
+}
+
+/** Garante existência de oc_semana para loja/data e bloqueia criação se houver semanas anteriores em aberto */
+async function ensureSemanaForOc(regra: UserRegraContext, lojaId: string, referencia: Date): Promise<string> {
+  if (!podeAcessarLoja(regra, lojaId)) throw new Error('Acesso negado à loja');
+  const { inicio, fim } = getIntervaloSemana(referencia);
+
+  // Bloqueio: se existir semana anterior ABERTA para esta loja, não permite nova semana
+  const { data: semanasAbertasAnteriores, error: errAbertas } = await supabase
+    .from('oc_semana')
+    .select('id, data_inicio, data_fim, status')
+    .eq('loja_id', lojaId)
+    .eq('status', 'ABERTA')
+    .lt('data_fim', inicio);
+  if (errAbertas) throw errAbertas;
+  if (semanasAbertasAnteriores && semanasAbertasAnteriores.length > 0) {
+    throw new Error('Existe semana anterior em aberto para esta loja. Feche a semana antes de lançar novas OCs.');
+  }
+
+  // Busca semana existente para este intervalo
+  const { data: existing, error: errExisting } = await supabase
+    .from('oc_semana')
+    .select('id')
+    .eq('loja_id', lojaId)
+    .eq('data_inicio', inicio)
+    .eq('data_fim', fim)
+    .single();
+  if (!errExisting && existing?.id) {
+    return existing.id as string;
+  }
+
+  // Cria semana ABERTA
+  const { data: created, error: errCreate } = await supabase
+    .from('oc_semana')
+    .insert({
+      loja_id: lojaId,
+      data_inicio: inicio,
+      data_fim: fim,
+      status: 'ABERTA',
+    })
+    .select('id')
+    .single();
+  if (errCreate || !created) throw errCreate || new Error('Erro ao criar semana da OC');
+  return created.id as string;
+}
+
 /** Lista OCs com permissão por perfil. Aplica status ATRASADA de forma lógica (7 dias em andamento). */
 export async function listOcs(regra: UserRegraContext, filters: {
   loja_id?: string;
   status?: string;
   data_inicio?: string;
   data_fim?: string;
+  semana_id?: string;
 }) {
   let query = supabase
     .from('ocs')
@@ -107,6 +167,9 @@ export async function listOcs(regra: UserRegraContext, filters: {
   }
   if (filters.status) {
     query = query.eq('status', filters.status);
+  }
+  if (filters.semana_id) {
+    query = query.eq('semana_id', filters.semana_id);
   }
   if (filters.data_inicio) {
     // Filtro por período deve considerar a data de criação da OC (created_at)
@@ -271,6 +334,10 @@ export async function createOc(regra: UserRegraContext, createdBy: string, body:
   const motoristas = await getMotoristasByLoja(regra, lojaId);
   if (!motoristas.some((m: any) => m.id === motoristaId)) throw new Error('Motorista não disponível para esta loja');
 
+  // Garante semana da OC (criação automática + bloqueio de semanas anteriores em aberto)
+  const agora = new Date();
+  const semanaId = await ensureSemanaForOc(regra, lojaId, agora);
+
   const { data: oc, error } = await supabase
     .from('ocs')
     .insert({
@@ -278,6 +345,7 @@ export async function createOc(regra: UserRegraContext, createdBy: string, body:
       veiculo_id: body.veiculo_id,
       motorista_id: motoristaId,
       vendedor_id: vendedorId || null,
+      semana_id: semanaId,
       status: 'ABERTA',
       created_by: createdBy,
     })
@@ -691,6 +759,31 @@ export async function getSemanaDetalhe(regra: UserRegraContext, semanaId: string
   };
 }
 
+/** Fecha uma semana (status = FECHADA) com verificação de acesso */
+export async function fecharSemana(regra: UserRegraContext, semanaId: string) {
+  const { data: semana, error } = await supabase
+    .from('oc_semana')
+    .select('id, loja_id, status')
+    .eq('id', semanaId)
+    .single();
+  if (error || !semana) throw new Error('Semana não encontrada');
+  if (regra.nivel === 'motorista') throw new Error('Acesso negado à loja');
+  if (semana.loja_id && !podeAcessarLoja(regra, semana.loja_id)) {
+    throw new Error('Acesso negado à loja');
+  }
+  if (semana.status === 'FECHADA') {
+    return semana;
+  }
+  const { data: updated, error: errUpd } = await supabase
+    .from('oc_semana')
+    .update({ status: 'FECHADA' })
+    .eq('id', semanaId)
+    .select('id, loja_id, status')
+    .single();
+  if (errUpd || !updated) throw errUpd || new Error('Erro ao fechar semana');
+  return updated;
+}
+
 /** Marcar OCs ABERTA antigas como ATRASADA (job ou ao listar) */
 export async function atualizarStatusAtrasadas() {
   // Lógica de atraso agora é aplicada de forma \"on the fly\" em listOcs/getOcById,
@@ -894,6 +987,113 @@ export async function updateVeiculo(regra: UserRegraContext, veiculoId: string, 
   }
 
   return updated || veiculo;
+}
+
+/** Lista manutenções de veículos (veiculo_manutencao) respeitando permissões de loja */
+export async function listManutencoes(regra: UserRegraContext, filters: {
+  loja_id?: string;
+  veiculo_id?: string;
+  status?: 'AGENDADA' | 'REALIZADA' | 'VENCIDA';
+  tipo?: string;
+}) {
+  const isGestorGlobal = isGestorGlobalFn(regra);
+
+  // Descobre veículos acessíveis
+  let vlsQuery = supabase
+    .from('veiculos_lojas')
+    .select('veiculo_id, loja_id');
+
+  if (isGestorGlobal) {
+    if (filters.loja_id) {
+      vlsQuery = vlsQuery.eq('loja_id', filters.loja_id);
+    }
+  } else {
+    const lojas = getLojasPermitidas(regra);
+    if (lojas.length === 0) return [];
+    const lojasFiltro = filters.loja_id && lojas.includes(filters.loja_id) ? [filters.loja_id] : lojas;
+    vlsQuery = vlsQuery.in('loja_id', lojasFiltro);
+  }
+
+  const { data: vls, error: errVls } = await vlsQuery;
+  if (errVls) throw errVls;
+  const veiculoPorLoja: Record<string, string> = {};
+  const veiculoIds = [...new Set((vls || []).map((v: any) => {
+    veiculoPorLoja[v.veiculo_id] = v.loja_id;
+    return v.veiculo_id;
+  }))];
+
+  if (filters.veiculo_id) {
+    if (!veiculoIds.includes(filters.veiculo_id)) {
+      return [];
+    }
+  }
+
+  if (veiculoIds.length === 0) return [];
+
+  let manutQuery = supabase
+    .from('veiculo_manutencao')
+    .select('id, veiculo_id, tipo, data_manutencao, km_troca, km_proxima_troca, observacao, status, oc_id, created_at')
+    .in('veiculo_id', filters.veiculo_id ? [filters.veiculo_id] : veiculoIds)
+    .order('data_manutencao', { ascending: false });
+
+  if (filters.status) {
+    manutQuery = manutQuery.eq('status', filters.status);
+  }
+  if (filters.tipo) {
+    manutQuery = manutQuery.eq('tipo', filters.tipo);
+  }
+
+  const { data, error } = await manutQuery;
+  if (error) throw error;
+  const list = data || [];
+  return list.map((m: any) => ({
+    ...m,
+    loja_id: veiculoPorLoja[m.veiculo_id] || null,
+  }));
+}
+
+/** Cria manutenção de veículo (troca de óleo, revisão, etc.) */
+export async function createManutencao(regra: UserRegraContext, body: {
+  veiculo_id: string;
+  tipo: string;
+  data_manutencao: string;
+  km_troca: number;
+  km_proxima_troca: number;
+  observacao?: string | null;
+  status?: 'AGENDADA' | 'REALIZADA' | 'VENCIDA';
+}) {
+  // Verifica acesso ao veículo via loja
+  const { data: vls, error: errVls } = await supabase
+    .from('veiculos_lojas')
+    .select('loja_id')
+    .eq('veiculo_id', body.veiculo_id);
+  if (errVls) throw errVls;
+  const lojaId = (vls && vls[0]?.loja_id) || null;
+  if (lojaId && !podeAcessarLoja(regra, lojaId)) throw new Error('Acesso negado à loja');
+
+  const status = body.status || 'AGENDADA';
+  if (!['AGENDADA', 'REALIZADA', 'VENCIDA'].includes(status)) {
+    throw new Error('Status de manutenção inválido');
+  }
+
+  const { data, error } = await supabase
+    .from('veiculo_manutencao')
+    .insert({
+      veiculo_id: body.veiculo_id,
+      tipo: body.tipo,
+      data_manutencao: body.data_manutencao,
+      km_troca: body.km_troca,
+      km_proxima_troca: body.km_proxima_troca,
+      observacao: body.observacao ?? null,
+      status,
+    })
+    .select('id, veiculo_id, tipo, data_manutencao, km_troca, km_proxima_troca, observacao, status, oc_id, created_at')
+    .single();
+  if (error) throw error;
+  return {
+    ...data,
+    loja_id: lojaId,
+  };
 }
 
 /** Remove veículo se não possuir OCs vinculadas */

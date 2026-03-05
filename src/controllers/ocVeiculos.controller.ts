@@ -175,6 +175,22 @@ export const getSemanaDetalhe = async (req: RequestWithUser, res: Response) => {
   }
 };
 
+export const fecharSemana = async (req: RequestWithUser, res: Response) => {
+  try {
+    if (!req.userRegra) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+    const { id } = req.params;
+    const data = await ocService.fecharSemana(req.userRegra, id);
+    res.json(data);
+  } catch (e: any) {
+    if (e.message === 'Semana não encontrada' || e.message === 'Acesso negado à loja') {
+      return res.status(404).json({ error: e.message });
+    }
+    res.status(500).json({ error: e.message || 'Erro ao fechar semana' });
+  }
+};
+
 export const getVeiculosByLoja = async (req: RequestWithUser, res: Response) => {
   try {
     if (!req.userRegra) {
@@ -386,5 +402,50 @@ export const createMotorista = async (req: RequestWithUser, res: Response) => {
       return res.status(400).json({ error: e.message });
     }
     res.status(500).json({ error: e.message || 'Erro ao criar motorista' });
+  }
+};
+
+export const listManutencoes = async (req: RequestWithUser, res: Response) => {
+  try {
+    if (!req.userRegra) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+    const { loja_id, veiculo_id, status, tipo } = req.query;
+    const data = await ocService.listManutencoes(req.userRegra, {
+      loja_id: loja_id as string | undefined,
+      veiculo_id: veiculo_id as string | undefined,
+      status: status as 'AGENDADA' | 'REALIZADA' | 'VENCIDA' | undefined,
+      tipo: tipo as string | undefined,
+    });
+    res.json(data);
+  } catch (e: any) {
+    if (e.message === 'Acesso negado à loja') {
+      return res.status(403).json({ error: e.message });
+    }
+    res.status(500).json({ error: e.message || 'Erro ao listar manutenções' });
+  }
+};
+
+export const createManutencao = async (req: RequestWithUser, res: Response) => {
+  try {
+    if (!req.userRegra) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+    const body = req.body;
+    const data = await ocService.createManutencao(req.userRegra, {
+      veiculo_id: body.veiculo_id,
+      tipo: body.tipo,
+      data_manutencao: body.data_manutencao,
+      km_troca: body.km_troca,
+      km_proxima_troca: body.km_proxima_troca,
+      observacao: body.observacao,
+      status: body.status,
+    });
+    res.status(201).json(data);
+  } catch (e: any) {
+    if (e.message === 'Acesso negado à loja' || e.message?.includes('inválido')) {
+      return res.status(400).json({ error: e.message });
+    }
+    res.status(500).json({ error: e.message || 'Erro ao criar manutenção' });
   }
 };

@@ -284,7 +284,8 @@ export const getOcsSchema = z.object({
     loja_id: z.string().uuid().optional(),
     status: z.enum(['ABERTA', 'EM_ANDAMENTO', 'FECHADA', 'ATRASADA']).optional(),
     data_inicio: z.string().optional(),
-    data_fim: z.string().optional()
+    data_fim: z.string().optional(),
+    semana_id: z.string().uuid().optional()
   })
 });
 

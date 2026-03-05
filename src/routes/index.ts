@@ -138,6 +138,7 @@ router.delete('/vendas-online/:id', authenticate, getUserRegra, vendasOnlineCont
 router.get('/ocs', authenticate, getUserRegra, validate(getOcsSchema), ocVeiculosController.getOcs);
 router.get('/ocs/semanas', authenticate, getUserRegra, ocVeiculosController.getSemanas);
 router.get('/ocs/semanas/:id', authenticate, getUserRegra, ocVeiculosController.getSemanaDetalhe);
+router.post('/ocs/semanas/:id/fechar', authenticate, getUserRegra, ocVeiculosController.fecharSemana);
 router.get('/ocs/veiculos', authenticate, getUserRegra, ocVeiculosController.getVeiculosByLoja);
 router.get('/ocs/motoristas', authenticate, getUserRegra, ocVeiculosController.getMotoristasByLoja);
 router.get('/ocs/dashboard', authenticate, getUserRegra, validate(getDashboardOcSchema), ocVeiculosController.getDashboardOc);
@@ -156,5 +157,8 @@ router.delete('/veiculos/:id', authenticate, getUserRegra, validate(deleteVeicul
 router.get('/motoristas/usuarios-motoristas', authenticate, getUserRegra, ocVeiculosController.getUsuariosMotoristas);
 router.get('/motoristas', authenticate, getUserRegra, ocVeiculosController.listMotoristas);
 router.post('/motoristas', authenticate, getUserRegra, validate(createMotoristaSchema), ocVeiculosController.createMotorista);
+
+router.get('/ocs/manutencoes', authenticate, getUserRegra, ocVeiculosController.listManutencoes);
+router.post('/ocs/manutencoes', authenticate, getUserRegra, ocVeiculosController.createManutencao);
 
 export default router;
