@@ -138,6 +138,43 @@ export const getDashboardOc = async (req: RequestWithUser, res: Response) => {
   }
 };
 
+export const getSemanas = async (req: RequestWithUser, res: Response) => {
+  try {
+    if (!req.userRegra) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+    const { loja_id, ano, mes, status } = req.query;
+    const data = await ocService.listSemanas(req.userRegra, {
+      loja_id: loja_id as string | undefined,
+      ano: ano ? Number(ano) : undefined,
+      mes: mes ? Number(mes) : undefined,
+      status: status as 'ABERTA' | 'FECHADA' | undefined,
+    });
+    res.json(data);
+  } catch (e: any) {
+    if (e.message === 'Acesso negado à loja') {
+      return res.status(403).json({ error: e.message });
+    }
+    res.status(500).json({ error: e.message || 'Erro ao listar semanas' });
+  }
+};
+
+export const getSemanaDetalhe = async (req: RequestWithUser, res: Response) => {
+  try {
+    if (!req.userRegra) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+    const { id } = req.params;
+    const data = await ocService.getSemanaDetalhe(req.userRegra, id);
+    res.json(data);
+  } catch (e: any) {
+    if (e.message === 'Semana não encontrada' || e.message === 'Acesso negado à loja') {
+      return res.status(404).json({ error: e.message });
+    }
+    res.status(500).json({ error: e.message || 'Erro ao buscar detalhe da semana' });
+  }
+};
+
 export const getVeiculosByLoja = async (req: RequestWithUser, res: Response) => {
   try {
     if (!req.userRegra) {

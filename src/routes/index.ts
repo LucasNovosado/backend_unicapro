@@ -136,6 +136,8 @@ router.delete('/vendas-online/:id', authenticate, getUserRegra, vendasOnlineCont
 // OC VEÍCULOS
 // ============================================
 router.get('/ocs', authenticate, getUserRegra, validate(getOcsSchema), ocVeiculosController.getOcs);
+router.get('/ocs/semanas', authenticate, getUserRegra, ocVeiculosController.getSemanas);
+router.get('/ocs/semanas/:id', authenticate, getUserRegra, ocVeiculosController.getSemanaDetalhe);
 router.get('/ocs/veiculos', authenticate, getUserRegra, ocVeiculosController.getVeiculosByLoja);
 router.get('/ocs/motoristas', authenticate, getUserRegra, ocVeiculosController.getMotoristasByLoja);
 router.get('/ocs/dashboard', authenticate, getUserRegra, validate(getDashboardOcSchema), ocVeiculosController.getDashboardOc);

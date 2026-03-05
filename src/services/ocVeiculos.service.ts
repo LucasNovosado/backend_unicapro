@@ -4,7 +4,7 @@
 import { supabase } from '../config/supabase';
 
 const OC_STATUS = ['ABERTA', 'EM_ANDAMENTO', 'FECHADA', 'ATRASADA'] as const;
-const LANCAMENTO_CATEGORIA = ['combustivel', 'pedagio', 'manutencao', 'outros'] as const;
+const LANCAMENTO_CATEGORIA = ['combustivel', 'pedagio', 'manutencao', 'bateria', 'outros'] as const;
 
 export type OcStatus = typeof OC_STATUS[number];
 export type LancamentoCategoria = typeof LANCAMENTO_CATEGORIA[number];
@@ -47,19 +47,32 @@ function applyOcFilter(regra: UserRegraContext, query: any) {
   return query.in('loja_id', lojas);
 }
 
-/** Lista OCs com permissão por perfil. Atualiza OCs em atraso antes de listar. */
+function aplicarStatusAtrasadaLogico<T extends { status: OcStatus; data_saida?: string | null; data_hora_saida?: string | null }>(oc: T): T {
+  if (oc.status !== 'EM_ANDAMENTO') return oc;
+  const referencia = oc.data_hora_saida || oc.data_saida;
+  if (!referencia) return oc;
+  const saidaDate = new Date(referencia);
+  if (Number.isNaN(saidaDate.getTime())) return oc;
+  const limite = new Date();
+  limite.setDate(limite.getDate() - 7);
+  if (saidaDate < limite) {
+    return { ...oc, status: 'ATRASADA' };
+  }
+  return oc;
+}
+
+/** Lista OCs com permissão por perfil. Aplica status ATRASADA de forma lógica (7 dias em andamento). */
 export async function listOcs(regra: UserRegraContext, filters: {
   loja_id?: string;
   status?: string;
   data_inicio?: string;
   data_fim?: string;
 }) {
-  await atualizarStatusAtrasadas();
   let query = supabase
     .from('ocs')
     .select(`
       id, loja_id, veiculo_id, motorista_id, vendedor_id,
-      km_saida, km_retorno, km_total, status, data_saida, data_retorno,
+      km_saida, km_retorno, km_total, status, data_saida, data_retorno, data_hora_saida, semana_id,
       created_by, created_at,
       loja:lojas(id, nome, cidade, estado),
       veiculo:veiculos(id, placa, modelo, apelido, renavam),
@@ -108,7 +121,12 @@ export async function listOcs(regra: UserRegraContext, filters: {
 
   const { data, error } = await query;
   if (error) throw error;
-  return data || [];
+  const list = (data || []) as any[];
+
+  // Aplica status ATRASADA de forma lógica (7 dias desde a saída)
+  const ajustadas = list.map((oc) => aplicarStatusAtrasadaLogico(oc));
+
+  return ajustadas;
 }
 
 /** Busca OC por ID com verificação de acesso */
@@ -133,15 +151,16 @@ export async function getOcById(regra: UserRegraContext, ocId: string) {
     .single();
 
   if (error || !oc) throw new Error('OC não encontrada');
+  const ocAjustada = aplicarStatusAtrasadaLogico(oc as any);
   if (!podeAcessarLoja(regra, oc.loja_id)) {
     if (regra.nivel === 'motorista') {
       const { data: m } = await supabase.from('motoristas').select('id').eq('user_regra_id', regra.id).single();
-      if (!m || oc.motorista_id !== m.id) throw new Error('Acesso negado');
+      if (!m || ocAjustada.motorista_id !== m.id) throw new Error('Acesso negado');
     } else {
       throw new Error('Acesso negado');
     }
   }
-  return oc;
+  return ocAjustada;
 }
 
 /** Veículos disponíveis para uma loja (via veiculos_lojas) */
@@ -283,6 +302,7 @@ export async function updateOcSaida(regra: UserRegraContext, ocId: string, km_sa
     .update({
       km_saida,
       data_saida: new Date().toISOString(),
+      data_hora_saida: new Date().toISOString(),
       status: 'EM_ANDAMENTO',
     })
     .eq('id', ocId)
@@ -465,18 +485,150 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
   };
 }
 
+/** Lista semanas de OC por loja/ano/mês com permissão */
+export async function listSemanas(regra: UserRegraContext, filters: {
+  loja_id?: string;
+  ano?: number;
+  mes?: number;
+  status?: 'ABERTA' | 'FECHADA';
+}) {
+  const lojasPermitidas = getLojasPermitidas(regra);
+  const isGestorGlobal = isGestorGlobalFn(regra);
+
+  let query = supabase
+    .from('oc_semana')
+    .select('id, loja_id, data_inicio, data_fim, status, total_custos, total_km, total_combustivel_litros, total_combustivel_valor')
+    .order('data_inicio', { ascending: false });
+
+  if (!isGestorGlobal) {
+    if (lojasPermitidas.length === 0) {
+      return [];
+    }
+    if (filters.loja_id && lojasPermitidas.includes(filters.loja_id)) {
+      query = query.eq('loja_id', filters.loja_id);
+    } else {
+      query = query.in('loja_id', lojasPermitidas);
+    }
+  } else if (filters.loja_id) {
+    query = query.eq('loja_id', filters.loja_id);
+  }
+
+  if (filters.status) {
+    query = query.eq('status', filters.status);
+  }
+  if (filters.ano) {
+    query = query.gte('data_inicio', `${filters.ano}-01-01`).lte('data_fim', `${filters.ano}-12-31`);
+  }
+  if (filters.mes) {
+    const ano = filters.ano ?? new Date().getFullYear();
+    const mes = String(filters.mes).padStart(2, '0');
+    const inicio = `${ano}-${mes}-01`;
+    const fimDate = new Date(ano, filters.mes, 0); // último dia do mês
+    const fim = `${ano}-${mes}-${String(fimDate.getDate()).padStart(2, '0')}`;
+    query = query.gte('data_inicio', inicio).lte('data_fim', fim);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+/** Detalhe de uma semana: resumo, abastecimentos e OCs */
+export async function getSemanaDetalhe(regra: UserRegraContext, semanaId: string) {
+  const { data: semana, error } = await supabase
+    .from('oc_semana')
+    .select('id, loja_id, data_inicio, data_fim, status, total_custos, total_km, total_combustivel_litros, total_combustivel_valor')
+    .eq('id', semanaId)
+    .single();
+  if (error || !semana) throw new Error('Semana não encontrada');
+
+  if (semana.loja_id && !podeAcessarLoja(regra, semana.loja_id)) {
+    throw new Error('Acesso negado à loja');
+  }
+
+  // Abastecimentos da semana
+  const { data: combustivel, error: errComb } = await supabase
+    .from('oc_semana_combustivel')
+    .select(`
+      id, semana_id, veiculo_id, data_abastecimento, litros, valor_total, oc_id, observacao, created_at,
+      veiculo:veiculos(id, placa, modelo, apelido, renavam)
+    `)
+    .eq('semana_id', semanaId)
+    .order('data_abastecimento', { ascending: true });
+  if (errComb) throw errComb;
+
+  // OCs da semana
+  const { data: ocs, error: errOcs } = await supabase
+    .from('ocs')
+    .select(`
+      id, loja_id, veiculo_id, motorista_id, vendedor_id,
+      km_saida, km_retorno, km_total, status, data_saida, data_retorno, data_hora_saida, created_at,
+      loja:lojas(id, nome, cidade, estado),
+      veiculo:veiculos(id, placa, modelo, apelido, renavam),
+      motorista:motoristas(id, nome, vendedor_id, user_regra_id, loja_id, vendedor:vendedores(id, nome))
+    `)
+    .eq('semana_id', semanaId)
+    .order('created_at', { ascending: true });
+  if (errOcs) throw errOcs;
+
+  const ocList = (ocs || []).map((oc: any) => aplicarStatusAtrasadaLogico(oc));
+  const ocIds = ocList.map((o: any) => o.id);
+
+  // Resumo de baterias por OC
+  let bateriasPorOc: Record<string, { quant: number; valor: number; descricao: string | null; pedido: string | null }> = {};
+  if (ocIds.length > 0) {
+    const { data: lanc, error: errLanc } = await supabase
+      .from('oc_lancamentos')
+      .select('oc_id, categoria, valor, descricao, quantidade_baterias, pedido_bateria')
+      .in('oc_id', ocIds)
+      .eq('categoria', 'bateria');
+    if (errLanc) throw errLanc;
+    (lanc || []).forEach((l: any) => {
+      const current = bateriasPorOc[l.oc_id] || { quant: 0, valor: 0, descricao: null, pedido: null };
+      const quant = current.quant + (Number(l.quantidade_baterias) || 0 || 1);
+      const valor = current.valor + Number(l.valor || 0);
+      bateriasPorOc[l.oc_id] = {
+        quant,
+        valor,
+        descricao: l.descricao || current.descricao,
+        pedido: l.pedido_bateria || current.pedido,
+      };
+    });
+  }
+
+  const ocsComResumo = ocList.map((oc: any) => {
+    const resumo = bateriasPorOc[oc.id];
+    return {
+      ...oc,
+      baterias_resumo: resumo || null,
+    };
+  });
+
+  const totalLitros = (combustivel || []).reduce((s: number, c: any) => s + Number(c.litros || 0), 0);
+  const totalCombustivelValor = (combustivel || []).reduce((s: number, c: any) => s + Number(c.valor_total || 0), 0);
+  const totalKm = (ocs || []).reduce((s: number, o: any) => s + Number(o.km_total || 0), 0);
+  const mediaKmPorLitro = totalLitros > 0 ? totalKm / totalLitros : 0;
+
+  const resumo = {
+    total_litros: totalLitros,
+    total_combustivel_valor: totalCombustivelValor,
+    total_km: totalKm,
+    media_km_por_litro: mediaKmPorLitro,
+  };
+
+  return {
+    semana,
+    combustivel: combustivel || [],
+    ocs: ocsComResumo,
+    resumo,
+  };
+}
+
 /** Marcar OCs ABERTA antigas como ATRASADA (job ou ao listar) */
 export async function atualizarStatusAtrasadas() {
-  const horas = 24;
-  const limite = new Date();
-  limite.setHours(limite.getHours() - horas);
-  const { data, error } = await supabase
-    .from('ocs')
-    .update({ status: 'ATRASADA' })
-    .eq('status', 'ABERTA')
-    .lt('created_at', limite.toISOString());
-  if (error) throw error;
-  return data;
+  // Lógica de atraso agora é aplicada de forma \"on the fly\" em listOcs/getOcById,
+  // então esta função passa a ser um no-op mantido apenas por compatibilidade.
+  return null;
 }
 
 /** Lista veículos (todos das lojas permitidas ou filtrado por loja_id) */
