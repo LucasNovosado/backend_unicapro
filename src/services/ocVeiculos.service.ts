@@ -389,6 +389,10 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
       ranking_custos_loja: [],
       evolucao_ocs: [],
       custos_por_categoria: [],
+      semanas_abertas: 0,
+      trocas_oleo_vencidas: 0,
+      veiculos_em_oficina: 0,
+      semanas_recentes: [],
     };
   }
 
@@ -470,6 +474,65 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
   }
   const custosPorCategoria = Object.entries(catCount).map(([categoria, valor]) => ({ categoria, valor }));
 
+  // Novos KPIs de frota e semanas recentes
+  const lojasFiltro = filters.loja_id && lojas.includes(filters.loja_id) ? [filters.loja_id] : lojas;
+
+  // Contagem de semanas abertas em oc_semana
+  let semanasAbertas = 0;
+  let semanasRecentes: any[] = [];
+
+  if (lojasFiltro.length > 0) {
+    const { count: semanasAbertasCount, error: errSemanasAbertas } = await supabase
+      .from('oc_semana')
+      .select('id', { count: 'exact', head: true })
+      .in('loja_id', lojasFiltro)
+      .eq('status', 'ABERTA');
+    if (errSemanasAbertas) throw errSemanasAbertas;
+    semanasAbertas = semanasAbertasCount || 0;
+
+    const SEMANAS_RECENTES_LIMIT = 6;
+    const { data: semanasRecentesData, error: errSemanasRecentes } = await supabase
+      .from('oc_semana')
+      .select('id, loja_id, data_inicio, data_fim, status, total_custos, total_km, total_combustivel_litros, total_combustivel_valor')
+      .in('loja_id', lojasFiltro)
+      .order('data_inicio', { ascending: false })
+      .limit(SEMANAS_RECENTES_LIMIT);
+    if (errSemanasRecentes) throw errSemanasRecentes;
+    semanasRecentes = semanasRecentesData || [];
+  }
+
+  // Veículos das lojas permitidas via veiculos_lojas
+  let trocasOleoVencidas = 0;
+  let veiculosEmOficina = 0;
+
+  if (lojasFiltro.length > 0) {
+    const { data: vls, error: errVls } = await supabase
+      .from('veiculos_lojas')
+      .select('veiculo_id')
+      .in('loja_id', lojasFiltro);
+    if (errVls) throw errVls;
+    const veiculoIds = [...new Set((vls || []).map((v: any) => v.veiculo_id))];
+
+    if (veiculoIds.length > 0) {
+      const { count: trocasCount, error: errTrocas } = await supabase
+        .from('veiculo_manutencao')
+        .select('id', { count: 'exact', head: true })
+        .in('veiculo_id', veiculoIds)
+        .eq('tipo', 'troca_oleo')
+        .eq('status', 'VENCIDA');
+      if (errTrocas) throw errTrocas;
+      trocasOleoVencidas = trocasCount || 0;
+
+      const { count: veiculosOficinaCount, error: errVeiculosOficina } = await supabase
+        .from('veiculos')
+        .select('id', { count: 'exact', head: true })
+        .in('id', veiculoIds)
+        .eq('status_uso', 'EM_OFICINA');
+      if (errVeiculosOficina) throw errVeiculosOficina;
+      veiculosEmOficina = veiculosOficinaCount || 0;
+    }
+  }
+
   return {
     total_ocs: totalOcs,
     total_fechadas: totalFechadas,
@@ -482,6 +545,10 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
     ranking_custos_loja: rankingCustosLoja,
     evolucao_ocs: evolucaoOcs,
     custos_por_categoria: custosPorCategoria,
+    semanas_abertas: semanasAbertas,
+    trocas_oleo_vencidas: trocasOleoVencidas,
+    veiculos_em_oficina: veiculosEmOficina,
+    semanas_recentes: semanasRecentes,
   };
 }
 
