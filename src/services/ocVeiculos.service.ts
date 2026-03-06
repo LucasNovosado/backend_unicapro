@@ -646,6 +646,9 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
     }
   }
 
+  // Total de OCs em atraso (status ajustado logicamente para ATRASADA)
+  const ocsAtraso = list.filter((o: any) => o.status === 'ATRASADA').length;
+
   return {
     total_ocs: totalOcs,
     total_fechadas: totalFechadas,
