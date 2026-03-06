@@ -82,7 +82,9 @@ function getIntervaloSemana(date: Date): { inicio: string; fim: string } {
   return { inicio, fim };
 }
 
-/** Garante existência de oc_semana para loja/data e bloqueia criação se houver semanas anteriores em aberto */
+/** Garante existência de oc_semana para loja/data e bloqueia criação se houver semanas anteriores em aberto
+ *  Regras de bloqueio por atraso consideram apenas OCs criadas pelo próprio usuário (created_by = regra.id).
+ */
 async function ensureSemanaForOc(regra: UserRegraContext, lojaId: string, referencia: Date): Promise<string> {
   if (!podeAcessarLoja(regra, lojaId)) throw new Error('Acesso negado à loja');
   const { inicio, fim } = getIntervaloSemana(referencia);
@@ -101,8 +103,9 @@ async function ensureSemanaForOc(regra: UserRegraContext, lojaId: string, refere
   if (ultimaSemanaAnterior?.id) {
     const { data: ocsUltimaSemana, error: errOcsUltima } = await supabase
       .from('ocs')
-      .select('id, status, data_saida, data_hora_saida')
-      .eq('semana_id', ultimaSemanaAnterior.id);
+      .select('id, status, data_saida, data_hora_saida, created_by')
+      .eq('semana_id', ultimaSemanaAnterior.id)
+      .eq('created_by', regra.id);
     if (errOcsUltima) throw errOcsUltima;
 
     const existeOcAtrasada = (ocsUltimaSemana || []).some((oc: any) => {
@@ -555,8 +558,10 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
   veiculo_id?: string;
   vendedor_id?: string;
 }) {
-  const lojas = getLojasPermitidas(regra);
-  if (lojas.length === 0) {
+  const lojasPermitidas = getLojasPermitidas(regra);
+  const isGestorGlobal = isGestorGlobalFn(regra);
+
+  if (!isGestorGlobal && lojasPermitidas.length === 0) {
     return {
       total_ocs: 0,
       total_fechadas: 0,
@@ -573,14 +578,20 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
       trocas_oleo_vencidas: 0,
       veiculos_em_oficina: 0,
       semanas_recentes: [],
+      pode_iniciar_semana: false,
+      proxima_semana_sugestao: null,
     };
   }
 
   let query = supabase
     .from('ocs')
-    .select('id, loja_id, veiculo_id, status, km_saida, km_retorno, km_total, created_at')
-    .in('loja_id', lojas);
-  if (filters.loja_id && lojas.includes(filters.loja_id)) {
+    .select('id, loja_id, veiculo_id, vendedor_id, status, km_saida, km_retorno, km_total, created_at');
+
+  if (!isGestorGlobal) {
+    query = query.in('loja_id', lojasPermitidas);
+  }
+
+  if (filters.loja_id) {
     query = query.eq('loja_id', filters.loja_id);
   }
   if (filters.veiculo_id) {
@@ -670,7 +681,12 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
   const custosPorCategoria = Object.entries(catCount).map(([categoria, valor]) => ({ categoria, valor }));
 
   // Novos KPIs de frota e semanas recentes
-  const lojasFiltro = filters.loja_id && lojas.includes(filters.loja_id) ? [filters.loja_id] : lojas;
+  let lojasFiltro: string[] = [];
+  if (isGestorGlobal) {
+    lojasFiltro = filters.loja_id ? [filters.loja_id] : [];
+  } else {
+    lojasFiltro = filters.loja_id && lojasPermitidas.includes(filters.loja_id) ? [filters.loja_id] : lojasPermitidas;
+  }
 
   // Contagem de semanas abertas em oc_semana + identificação de semanas com atraso
   let semanasAbertas = 0;
@@ -678,7 +694,7 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
   let podeIniciarSemana = false;
   let proximaSemanaSugestao: { loja_id: string; data_inicio: string; data_fim: string } | null = null;
 
-  if (lojasFiltro.length > 0) {
+  if (!isGestorGlobal && lojasFiltro.length > 0) {
     const { count: semanasAbertasCount, error: errSemanasAbertas } = await supabase
       .from('oc_semana')
       .select('id', { count: 'exact', head: true })
@@ -759,8 +775,9 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
       if (ultimaSemana?.id && !bloqueada) {
         const { data: ocsUltimaSemana, error: errOcsUltima } = await supabase
           .from('ocs')
-          .select('id, status, data_saida, data_hora_saida')
-          .eq('semana_id', ultimaSemana.id);
+          .select('id, status, data_saida, data_hora_saida, created_by')
+          .eq('semana_id', ultimaSemana.id)
+          .eq('created_by', regra.id);
         if (errOcsUltima) throw errOcsUltima;
 
         const existeOcAtrasada = (ocsUltimaSemana || []).some((oc: any) => {
@@ -784,7 +801,7 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
   let trocasOleoVencidas = 0;
   let veiculosEmOficina = 0;
 
-  if (lojasFiltro.length > 0) {
+    if (lojasFiltro.length > 0) {
     const { data: vls, error: errVls } = await supabase
       .from('veiculos_lojas')
       .select('veiculo_id')
