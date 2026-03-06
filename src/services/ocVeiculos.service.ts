@@ -156,6 +156,41 @@ async function ensureSemanaForOc(regra: UserRegraContext, lojaId: string, refere
   return created.id as string;
 }
 
+/** Inicia manualmente uma nova semana para uma loja (sem precisar criar OC).
+ *  A semana é calculada imediatamente após a última semana existente da loja,
+ *  respeitando as mesmas regras de bloqueio de atraso e semanas abertas.
+ */
+export async function iniciarNovaSemana(regra: UserRegraContext, lojaId: string) {
+  if (!podeAcessarLoja(regra, lojaId)) throw new Error('Acesso negado à loja');
+
+  // Busca última semana existente da loja
+  const { data: ultimaSemana, error: errUlt } = await supabase
+    .from('oc_semana')
+    .select('id, data_inicio, data_fim')
+    .eq('loja_id', lojaId)
+    .order('data_fim', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (errUlt) throw errUlt;
+
+  let referencia = new Date();
+  if (ultimaSemana?.data_fim) {
+    referencia = new Date(ultimaSemana.data_fim);
+    referencia.setDate(referencia.getDate() + 1);
+  }
+
+  const semanaId = await ensureSemanaForOc(regra, lojaId, referencia);
+
+  const { data: semana, error: errSemana } = await supabase
+    .from('oc_semana')
+    .select('id, loja_id, data_inicio, data_fim, status, total_custos, total_km, total_combustivel_litros, total_combustivel_valor')
+    .eq('id', semanaId)
+    .single();
+  if (errSemana || !semana) throw errSemana || new Error('Erro ao buscar semana criada');
+
+  return semana;
+}
+
 /** Lista OCs com permissão por perfil. Aplica status ATRASADA de forma lógica (7 dias em andamento). */
 export async function listOcs(regra: UserRegraContext, filters: {
   loja_id?: string;
@@ -629,6 +664,8 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
   // Contagem de semanas abertas em oc_semana + identificação de semanas com atraso
   let semanasAbertas = 0;
   let semanasRecentes: any[] = [];
+  let podeIniciarSemana = false;
+  let proximaSemanaSugestao: { loja_id: string; data_inicio: string; data_fim: string } | null = null;
 
   if (lojasFiltro.length > 0) {
     const { count: semanasAbertasCount, error: errSemanasAbertas } = await supabase
@@ -670,6 +707,65 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
         ...s,
         tem_atraso: semanasComAtraso.has(s.id),
       }));
+    }
+
+    // Verifica se é possível iniciar manualmente uma nova semana para a loja filtrada (quando há apenas uma loja em foco)
+    if (lojasFiltro.length === 1) {
+      const lojaId = lojasFiltro[0];
+
+      // Busca última semana da loja (pode ser mesma de semanasRecentes[0], mas garantimos via query)
+      const { data: ultimaSemana, error: errUlt } = await supabase
+        .from('oc_semana')
+        .select('id, data_inicio, data_fim, status')
+        .eq('loja_id', lojaId)
+        .order('data_fim', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (errUlt) throw errUlt;
+
+      let referencia = new Date();
+      if (ultimaSemana?.data_fim) {
+        referencia = new Date(ultimaSemana.data_fim);
+        referencia.setDate(referencia.getDate() + 1);
+      }
+
+      const { inicio, fim } = getIntervaloSemana(referencia);
+
+      // Mesma lógica de bloqueio usada em ensureSemanaForOc
+      const { data: semanasAbertasAnterioresCheck, error: errAbertasCheck } = await supabase
+        .from('oc_semana')
+        .select('id')
+        .eq('loja_id', lojaId)
+        .eq('status', 'ABERTA')
+        .lt('data_fim', inicio);
+      if (errAbertasCheck) throw errAbertasCheck;
+
+      let bloqueada = false;
+      if (semanasAbertasAnterioresCheck && semanasAbertasAnterioresCheck.length > 0) {
+        bloqueada = true;
+      }
+
+      if (ultimaSemana?.id && !bloqueada) {
+        const { data: ocsUltimaSemana, error: errOcsUltima } = await supabase
+          .from('ocs')
+          .select('id, status, data_saida, data_hora_saida')
+          .eq('semana_id', ultimaSemana.id);
+        if (errOcsUltima) throw errOcsUltima;
+
+        const existeOcAtrasada = (ocsUltimaSemana || []).some((oc: any) => {
+          const ajustada = aplicarStatusAtrasadaLogico(oc);
+          return ajustada.status === 'ATRASADA';
+        });
+
+        if (existeOcAtrasada) {
+          bloqueada = true;
+        }
+      }
+
+      if (!bloqueada) {
+        podeIniciarSemana = true;
+        proximaSemanaSugestao = { loja_id: lojaId, data_inicio: inicio, data_fim: fim };
+      }
     }
   }
 
@@ -724,6 +820,8 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
     trocas_oleo_vencidas: trocasOleoVencidas,
     veiculos_em_oficina: veiculosEmOficina,
     semanas_recentes: semanasRecentes,
+    pode_iniciar_semana: podeIniciarSemana,
+    proxima_semana_sugestao: proximaSemanaSugestao,
   };
 }
 

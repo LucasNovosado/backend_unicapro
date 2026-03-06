@@ -191,6 +191,29 @@ export const fecharSemana = async (req: RequestWithUser, res: Response) => {
   }
 };
 
+export const iniciarSemana = async (req: RequestWithUser, res: Response) => {
+  try {
+    if (!req.userRegra) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+    const { loja_id } = req.body as { loja_id?: string };
+    if (!loja_id) {
+      return res.status(400).json({ error: 'loja_id é obrigatório' });
+    }
+    const data = await ocService.iniciarNovaSemana(req.userRegra, loja_id);
+    res.json(data);
+  } catch (e: any) {
+    if (
+      e.message === 'Acesso negado à loja' ||
+      e.message.startsWith('Não é possível criar uma nova semana') ||
+      e.message.startsWith('Existe semana anterior em aberto')
+    ) {
+      return res.status(400).json({ error: e.message });
+    }
+    res.status(500).json({ error: e.message || 'Erro ao iniciar nova semana' });
+  }
+};
+
 export const getVeiculosByLoja = async (req: RequestWithUser, res: Response) => {
   try {
     if (!req.userRegra) {

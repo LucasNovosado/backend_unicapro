@@ -139,6 +139,7 @@ router.get('/ocs', authenticate, getUserRegra, validate(getOcsSchema), ocVeiculo
 router.get('/ocs/semanas', authenticate, getUserRegra, ocVeiculosController.getSemanas);
 router.get('/ocs/semanas/:id', authenticate, getUserRegra, ocVeiculosController.getSemanaDetalhe);
 router.post('/ocs/semanas/:id/fechar', authenticate, getUserRegra, ocVeiculosController.fecharSemana);
+router.post('/ocs/semanas/iniciar', authenticate, getUserRegra, ocVeiculosController.iniciarSemana);
 router.get('/ocs/veiculos', authenticate, getUserRegra, ocVeiculosController.getVeiculosByLoja);
 router.get('/ocs/motoristas', authenticate, getUserRegra, ocVeiculosController.getMotoristasByLoja);
 router.get('/ocs/dashboard', authenticate, getUserRegra, validate(getDashboardOcSchema), ocVeiculosController.getDashboardOc);
