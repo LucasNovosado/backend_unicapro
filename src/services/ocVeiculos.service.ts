@@ -552,6 +552,8 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
   loja_id?: string;
   data_inicio?: string;
   data_fim?: string;
+  veiculo_id?: string;
+  vendedor_id?: string;
 }) {
   const lojas = getLojasPermitidas(regra);
   if (lojas.length === 0) {
@@ -574,9 +576,18 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
     };
   }
 
-  let query = supabase.from('ocs').select('id, loja_id, status, km_saida, km_retorno, km_total, created_at').in('loja_id', lojas);
+  let query = supabase
+    .from('ocs')
+    .select('id, loja_id, veiculo_id, status, km_saida, km_retorno, km_total, created_at')
+    .in('loja_id', lojas);
   if (filters.loja_id && lojas.includes(filters.loja_id)) {
     query = query.eq('loja_id', filters.loja_id);
+  }
+  if (filters.veiculo_id) {
+    query = query.eq('veiculo_id', filters.veiculo_id);
+  }
+  if (filters.vendedor_id) {
+    query = query.eq('vendedor_id', filters.vendedor_id);
   }
   if (filters.data_inicio) query = query.gte('created_at', filters.data_inicio);
   if (filters.data_fim) query = query.lte('created_at', filters.data_fim);

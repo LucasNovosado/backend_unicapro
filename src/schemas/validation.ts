@@ -379,6 +379,8 @@ export const getDashboardOcSchema = z.object({
   query: z.object({
     loja_id: z.string().uuid().optional(),
     data_inicio: z.string().optional(),
-    data_fim: z.string().optional()
+    data_fim: z.string().optional(),
+    veiculo_id: z.string().uuid().optional(),
+    vendedor_id: z.string().uuid().optional()
   })
 });

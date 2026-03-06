@@ -126,11 +126,13 @@ export const getDashboardOc = async (req: RequestWithUser, res: Response) => {
     if (!req.userRegra) {
       return res.status(401).json({ error: 'Usuário não autenticado' });
     }
-    const { loja_id, data_inicio, data_fim } = req.query;
+    const { loja_id, data_inicio, data_fim, veiculo_id, vendedor_id } = req.query;
     const data = await ocService.getDashboardOc(req.userRegra, {
       loja_id: loja_id as string,
       data_inicio: data_inicio as string,
       data_fim: data_fim as string,
+      veiculo_id: veiculo_id as string,
+      vendedor_id: vendedor_id as string,
     });
     res.json(data);
   } catch (e: any) {
