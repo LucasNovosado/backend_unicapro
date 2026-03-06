@@ -683,9 +683,11 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
   // Novos KPIs de frota e semanas recentes
   let lojasFiltro: string[] = [];
   if (isGestorGlobal) {
+    // Gestor global: se filtrar por loja, usa essa loja; senão considera todas as lojas (sem filtro explícito)
     lojasFiltro = filters.loja_id ? [filters.loja_id] : [];
   } else {
-    lojasFiltro = filters.loja_id && lojasPermitidas.includes(filters.loja_id) ? [filters.loja_id] : lojasPermitidas;
+    lojasFiltro =
+      filters.loja_id && lojasPermitidas.includes(filters.loja_id) ? [filters.loja_id] : lojasPermitidas;
   }
 
   // Contagem de semanas abertas em oc_semana + identificação de semanas com atraso
@@ -694,20 +696,27 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
   let podeIniciarSemana = false;
   let proximaSemanaSugestao: { loja_id: string; data_inicio: string; data_fim: string } | null = null;
 
+  // Query base para oc_semana
+  const semanasBaseQuery = supabase.from('oc_semana');
+
   if (!isGestorGlobal && lojasFiltro.length > 0) {
-    const { count: semanasAbertasCount, error: errSemanasAbertas } = await supabase
-      .from('oc_semana')
+    semanasBaseQuery.in('loja_id', lojasFiltro);
+  } else if (isGestorGlobal && filters.loja_id) {
+    semanasBaseQuery.eq('loja_id', filters.loja_id);
+  }
+
+  if (isGestorGlobal || lojasFiltro.length > 0) {
+    const { count: semanasAbertasCount, error: errSemanasAbertas } = await semanasBaseQuery
       .select('id', { count: 'exact', head: true })
-      .in('loja_id', lojasFiltro)
       .eq('status', 'ABERTA');
     if (errSemanasAbertas) throw errSemanasAbertas;
     semanasAbertas = semanasAbertasCount || 0;
 
     const SEMANAS_RECENTES_LIMIT = 6;
-    const { data: semanasRecentesData, error: errSemanasRecentes } = await supabase
-      .from('oc_semana')
-      .select('id, loja_id, data_inicio, data_fim, status, total_custos, total_km, total_combustivel_litros, total_combustivel_valor')
-      .in('loja_id', lojasFiltro)
+    const { data: semanasRecentesData, error: errSemanasRecentes } = await semanasBaseQuery
+      .select(
+        'id, loja_id, data_inicio, data_fim, status, total_custos, total_km, total_combustivel_litros, total_combustivel_valor',
+      )
       .order('data_inicio', { ascending: false })
       .limit(SEMANAS_RECENTES_LIMIT);
     if (errSemanasRecentes) throw errSemanasRecentes;
