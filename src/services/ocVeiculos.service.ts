@@ -410,6 +410,7 @@ export async function fecharOc(regra: UserRegraContext, ocId: string, body: { km
     .from('ocs')
     .update({
       km_retorno: body.km_retorno,
+      km_total: oc.km_saida != null ? body.km_retorno - oc.km_saida : oc.km_total ?? null,
       data_retorno: new Date().toISOString(),
       status: 'FECHADA',
     })
@@ -519,8 +520,20 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
   const totalFechadas = list.filter((o: any) => o.status === 'FECHADA').length;
   const percentualFechadas = totalOcs > 0 ? Math.round((totalFechadas / totalOcs) * 100) : 0;
 
-  const ocsComKm = list.filter((o: any) => o.km_total != null && o.km_total > 0);
-  const totalKm = ocsComKm.reduce((s: number, o: any) => s + (o.km_total || 0), 0);
+  const ocsComKm = list.filter((o: any) => {
+    const kmTotal = o.km_total != null
+      ? Number(o.km_total)
+      : (o.km_saida != null && o.km_retorno != null ? Number(o.km_retorno) - Number(o.km_saida) : 0);
+    return kmTotal > 0;
+  });
+
+  const totalKm = ocsComKm.reduce((s: number, o: any) => {
+    const kmTotal = o.km_total != null
+      ? Number(o.km_total)
+      : (o.km_saida != null && o.km_retorno != null ? Number(o.km_retorno) - Number(o.km_saida) : 0);
+    return s + kmTotal;
+  }, 0);
+
   const kmMedioOc = ocsComKm.length > 0 ? totalKm / ocsComKm.length : 0;
 
   const ocIds = list.map((o: any) => o.id);
