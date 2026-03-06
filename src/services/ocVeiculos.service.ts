@@ -334,6 +334,17 @@ export async function createOc(regra: UserRegraContext, createdBy: string, body:
   const motoristas = await getMotoristasByLoja(regra, lojaId);
   if (!motoristas.some((m: any) => m.id === motoristaId)) throw new Error('Motorista não disponível para esta loja');
 
+  // Regra de negócio: veículo em oficina não pode abrir nova OC
+  const { data: veiculoStatus, error: errVeicStatus } = await supabase
+    .from('veiculos')
+    .select('status_uso')
+    .eq('id', body.veiculo_id)
+    .single();
+  if (errVeicStatus) throw errVeicStatus;
+  if (veiculoStatus?.status_uso === 'EM_OFICINA') {
+    throw new Error('Veículo em oficina não pode abrir OC');
+  }
+
   // Garante semana da OC (criação automática + bloqueio de semanas anteriores em aberto)
   const agora = new Date();
   const semanaId = await ensureSemanaForOc(regra, lojaId, agora);
@@ -358,6 +369,14 @@ export async function createOc(regra: UserRegraContext, createdBy: string, body:
     .single();
 
   if (error) throw error;
+
+  // Atualiza status de uso do veículo para EM_OC (exceto se já estiver marcado como EM_OFICINA)
+  const nextStatusUso = veiculoStatus?.status_uso === 'EM_OFICINA' ? veiculoStatus.status_uso : 'EM_OC';
+  await supabase
+    .from('veiculos')
+    .update({ status_uso: nextStatusUso })
+    .eq('id', body.veiculo_id);
+
   return oc;
 }
 
@@ -398,6 +417,25 @@ export async function fecharOc(regra: UserRegraContext, ocId: string, body: { km
     .select()
     .single();
   if (error) throw error;
+
+  // Atualiza km_atual e status_uso do veículo com base no fechamento da OC
+  if (oc.veiculo_id) {
+    const { data: veiculoAtual, error: errVeic } = await supabase
+      .from('veiculos')
+      .select('km_atual, status_uso')
+      .eq('id', oc.veiculo_id)
+      .single();
+    if (!errVeic && veiculoAtual) {
+      const kmAtualExistente = typeof veiculoAtual.km_atual === 'number' ? veiculoAtual.km_atual : 0;
+      const novoKmAtual = Math.max(kmAtualExistente, body.km_retorno);
+      const novoStatusUso = veiculoAtual.status_uso === 'EM_OFICINA' ? veiculoAtual.status_uso : 'DISPONIVEL';
+      await supabase
+        .from('veiculos')
+        .update({ km_atual: novoKmAtual, status_uso: novoStatusUso })
+        .eq('id', oc.veiculo_id);
+    }
+  }
+
   return data;
 }
 
@@ -473,16 +511,13 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
 
   const { data: ocs, error } = await query;
   if (error) throw error;
-  const list = ocs || [];
+  const listRaw = ocs || [];
+  // Aplica regra de ATRASADA de forma consistente com listOcs/getOcById (7 dias a partir da saída)
+  const list = listRaw.map((o: any) => aplicarStatusAtrasadaLogico(o));
 
   const totalOcs = list.length;
   const totalFechadas = list.filter((o: any) => o.status === 'FECHADA').length;
   const percentualFechadas = totalOcs > 0 ? Math.round((totalFechadas / totalOcs) * 100) : 0;
-
-  const horasAtraso = 24;
-  const limiteAtraso = new Date();
-  limiteAtraso.setHours(limiteAtraso.getHours() - horasAtraso);
-  const ocsAtraso = list.filter((o: any) => o.status !== 'FECHADA' && o.created_at && new Date(o.created_at) < limiteAtraso).length;
 
   const ocsComKm = list.filter((o: any) => o.km_total != null && o.km_total > 0);
   const totalKm = ocsComKm.reduce((s: number, o: any) => s + (o.km_total || 0), 0);
@@ -508,12 +543,9 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
   Object.entries(lojaCount).forEach(([lid, total]) => rankingLojasOcs.push({ loja_id: lid, total }));
   rankingLojasOcs.sort((a, b) => b.total - a.total);
 
-  const abertasOuAndamento = list.filter((o: any) => o.status !== 'FECHADA');
-  const limiteAtraso2 = new Date();
-  limiteAtraso2.setHours(limiteAtraso2.getHours() - horasAtraso);
   const atrasoPorLoja: Record<string, number> = {};
-  abertasOuAndamento.forEach((o: any) => {
-    if (o.created_at && new Date(o.created_at) < limiteAtraso2) {
+  list.forEach((o: any) => {
+    if (o.status === 'ATRASADA') {
       atrasoPorLoja[o.loja_id] = (atrasoPorLoja[o.loja_id] || 0) + 1;
     }
   });
