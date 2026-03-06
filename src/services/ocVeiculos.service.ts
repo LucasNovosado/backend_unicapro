@@ -61,16 +61,22 @@ function aplicarStatusAtrasadaLogico<T extends { status: OcStatus; data_saida?: 
   return oc;
 }
 
-/** Calcula data de início (segunda) e fim (domingo) da semana para uma data de referência */
+/** Calcula data de início (domingo) e fim (sábado) da semana para uma data de referência
+ *  Regra de negócio: semanas sempre são de domingo a domingo (7 dias contínuos).
+ */
 function getIntervaloSemana(date: Date): { inicio: string; fim: string } {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
-  const day = d.getDay(); // 0=domingo,1=segunda,...
-  const diffToMonday = (day === 0 ? -6 : 1 - day);
+  const day = d.getDay(); // 0=domingo,1=segunda,...,6=sábado
+
+  // desloca para o domingo da semana corrente
+  const diffToSunday = -day;
   const inicioDate = new Date(d);
-  inicioDate.setDate(d.getDate() + diffToMonday);
+  inicioDate.setDate(d.getDate() + diffToSunday);
+
   const fimDate = new Date(inicioDate);
   fimDate.setDate(inicioDate.getDate() + 6);
+
   const inicio = inicioDate.toISOString().slice(0, 10);
   const fim = fimDate.toISOString().slice(0, 10);
   return { inicio, fim };
@@ -80,6 +86,36 @@ function getIntervaloSemana(date: Date): { inicio: string; fim: string } {
 async function ensureSemanaForOc(regra: UserRegraContext, lojaId: string, referencia: Date): Promise<string> {
   if (!podeAcessarLoja(regra, lojaId)) throw new Error('Acesso negado à loja');
   const { inicio, fim } = getIntervaloSemana(referencia);
+
+  // Regra adicional: não permitir nova semana se a última semana anterior tiver OCs em atraso
+  const { data: ultimaSemanaAnterior, error: errUltimaSemana } = await supabase
+    .from('oc_semana')
+    .select('id, data_inicio, data_fim')
+    .eq('loja_id', lojaId)
+    .lt('data_fim', inicio)
+    .order('data_fim', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (errUltimaSemana) throw errUltimaSemana;
+
+  if (ultimaSemanaAnterior?.id) {
+    const { data: ocsUltimaSemana, error: errOcsUltima } = await supabase
+      .from('ocs')
+      .select('id, status, data_saida, data_hora_saida')
+      .eq('semana_id', ultimaSemanaAnterior.id);
+    if (errOcsUltima) throw errOcsUltima;
+
+    const existeOcAtrasada = (ocsUltimaSemana || []).some((oc: any) => {
+      const ajustada = aplicarStatusAtrasadaLogico(oc);
+      return ajustada.status === 'ATRASADA';
+    });
+
+    if (existeOcAtrasada) {
+      throw new Error(
+        'Não é possível criar uma nova semana: existe OC em atraso na semana anterior. Regularize as OCs em atraso antes de abrir uma nova semana.',
+      );
+    }
+  }
 
   // Bloqueio: se existir semana anterior ABERTA para esta loja, não permite nova semana
   const { data: semanasAbertasAnteriores, error: errAbertas } = await supabase
@@ -590,7 +626,7 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
   // Novos KPIs de frota e semanas recentes
   const lojasFiltro = filters.loja_id && lojas.includes(filters.loja_id) ? [filters.loja_id] : lojas;
 
-  // Contagem de semanas abertas em oc_semana
+  // Contagem de semanas abertas em oc_semana + identificação de semanas com atraso
   let semanasAbertas = 0;
   let semanasRecentes: any[] = [];
 
@@ -612,6 +648,29 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
       .limit(SEMANAS_RECENTES_LIMIT);
     if (errSemanasRecentes) throw errSemanasRecentes;
     semanasRecentes = semanasRecentesData || [];
+
+    // Marca semanas que possuem pelo menos uma OC em atraso (status lógico ATRASADA)
+    const semanaIds = semanasRecentes.map((s: any) => s.id);
+    if (semanaIds.length > 0) {
+      const { data: ocsDasSemanas, error: errOcsSemanas } = await supabase
+        .from('ocs')
+        .select('id, semana_id, status, data_saida, data_hora_saida')
+        .in('semana_id', semanaIds);
+      if (errOcsSemanas) throw errOcsSemanas;
+
+      const semanasComAtraso = new Set<string>();
+      (ocsDasSemanas || []).forEach((oc: any) => {
+        const ajustada = aplicarStatusAtrasadaLogico(oc);
+        if (ajustada.status === 'ATRASADA' && ajustada.semana_id) {
+          semanasComAtraso.add(ajustada.semana_id);
+        }
+      });
+
+      semanasRecentes = semanasRecentes.map((s: any) => ({
+        ...s,
+        tem_atraso: semanasComAtraso.has(s.id),
+      }));
+    }
   }
 
   // Veículos das lojas permitidas via veiculos_lojas
@@ -713,7 +772,30 @@ export async function listSemanas(regra: UserRegraContext, filters: {
 
   const { data, error } = await query;
   if (error) throw error;
-  return data || [];
+  const semanas = (data || []) as any[];
+
+  if (semanas.length === 0) return semanas;
+
+  // Marca semanas que possuem pelo menos uma OC em atraso (status lógico ATRASADA)
+  const semanaIds = semanas.map((s: any) => s.id);
+  const { data: ocsDasSemanas, error: errOcsSemanas } = await supabase
+    .from('ocs')
+    .select('id, semana_id, status, data_saida, data_hora_saida')
+    .in('semana_id', semanaIds);
+  if (errOcsSemanas) throw errOcsSemanas;
+
+  const semanasComAtraso = new Set<string>();
+  (ocsDasSemanas || []).forEach((oc: any) => {
+    const ajustada = aplicarStatusAtrasadaLogico(oc);
+    if (ajustada.status === 'ATRASADA' && ajustada.semana_id) {
+      semanasComAtraso.add(ajustada.semana_id);
+    }
+  });
+
+  return semanas.map((s: any) => ({
+    ...s,
+    tem_atraso: semanasComAtraso.has(s.id),
+  }));
 }
 
 /** Detalhe de uma semana: resumo, abastecimentos e OCs */
