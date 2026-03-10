@@ -1356,18 +1356,26 @@ export async function listManutencoes(regra: UserRegraContext, filters: {
   }))];
 
   if (filters.veiculo_id) {
-    if (!veiculoIds.includes(filters.veiculo_id)) {
+    // Quando o usuário filtra explicitamente por veículo, não dependemos de veiculos_lojas
+    if (veiculoIds.length > 0 && !veiculoIds.includes(filters.veiculo_id)) {
+      // Veículo não pertence às lojas acessíveis
       return [];
     }
+  } else if (veiculoIds.length === 0) {
+    // Sem filtro de veículo e sem vinculação a lojas -> nada a listar
+    return [];
   }
-
-  if (veiculoIds.length === 0) return [];
 
   let manutQuery = supabase
     .from('veiculo_manutencao')
     .select('id, veiculo_id, tipo, data_manutencao, km_troca, km_proxima_troca, observacao, status, oc_id, created_at, loja_id, tipo_manutencao_id, categoria, valor_total')
-    .in('veiculo_id', filters.veiculo_id ? [filters.veiculo_id] : veiculoIds)
     .order('data_manutencao', { ascending: false });
+
+  if (filters.veiculo_id) {
+    manutQuery = manutQuery.eq('veiculo_id', filters.veiculo_id);
+  } else {
+    manutQuery = manutQuery.in('veiculo_id', veiculoIds);
+  }
 
   if (filters.status) {
     manutQuery = manutQuery.eq('status', filters.status);
