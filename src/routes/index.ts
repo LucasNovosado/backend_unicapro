@@ -161,5 +161,7 @@ router.post('/motoristas', authenticate, getUserRegra, validate(createMotoristaS
 
 router.get('/ocs/manutencoes', authenticate, getUserRegra, ocVeiculosController.listManutencoes);
 router.post('/ocs/manutencoes', authenticate, getUserRegra, ocVeiculosController.createManutencao);
+router.post('/ocs/manutencoes/atualizar-alertas', authenticate, getUserRegra, ocVeiculosController.atualizarAlertasManutencao);
+router.get('/ocs/manutencoes/tipos', authenticate, getUserRegra, ocVeiculosController.listTiposManutencao);
 
 export default router;

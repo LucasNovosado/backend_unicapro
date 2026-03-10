@@ -465,6 +465,12 @@ export const createManutencao = async (req: RequestWithUser, res: Response) => {
       km_proxima_troca: body.km_proxima_troca,
       observacao: body.observacao,
       status: body.status,
+      recorrencia_km: body.recorrencia_km,
+      recorrencia_dias: body.recorrencia_dias,
+      alertar_com_x_km_antes: body.alertar_com_x_km_antes,
+      alertar_com_x_dias_antes: body.alertar_com_x_dias_antes,
+      valor_total: body.valor_total,
+      dados_extras: body.dados_extras,
     });
     res.status(201).json(data);
   } catch (e: any) {
@@ -472,5 +478,29 @@ export const createManutencao = async (req: RequestWithUser, res: Response) => {
       return res.status(400).json({ error: e.message });
     }
     res.status(500).json({ error: e.message || 'Erro ao criar manutenção' });
+  }
+};
+
+export const listTiposManutencao = async (req: RequestWithUser, res: Response) => {
+  try {
+    if (!req.userRegra) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+    const data = await ocService.listTiposManutencao();
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Erro ao listar tipos de manutenção' });
+  }
+};
+
+export const atualizarAlertasManutencao = async (req: RequestWithUser, res: Response) => {
+  try {
+    if (!req.userRegra) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+    const data = await ocService.atualizarAlertasManutencao();
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Erro ao atualizar alertas de manutenção' });
   }
 };

@@ -818,6 +818,13 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
   // Veículos das lojas permitidas via veiculos_lojas
   let trocasOleoVencidas = 0;
   let veiculosEmOficina = 0;
+  let manutencoesPendentes = 0;
+  let manutencoesVencidas = 0;
+  let preventivasPeriodo = 0;
+  let corretivasPeriodo = 0;
+  let custoManutencaoPorCategoria: Record<string, number> = {};
+  let custoManutencaoPorVeiculo: Record<string, number> = {};
+  let custoManutencaoPorLoja: Record<string, number> = {};
 
     if (lojasFiltro.length > 0) {
     const { data: vls, error: errVls } = await supabase
@@ -844,6 +851,45 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
         .eq('status_uso', 'EM_OFICINA');
       if (errVeiculosOficina) throw errVeiculosOficina;
       veiculosEmOficina = veiculosOficinaCount || 0;
+
+      // Métricas detalhadas de manutenção para o período
+      let manutQuery = supabase
+        .from('veiculo_manutencao')
+        .select('id, veiculo_id, loja_id, status, categoria, valor_total, data_manutencao')
+        .in('veiculo_id', veiculoIds);
+
+      if (filters.data_inicio) {
+        manutQuery = manutQuery.gte('data_manutencao', filters.data_inicio);
+      }
+      if (filters.data_fim) {
+        manutQuery = manutQuery.lte('data_manutencao', filters.data_fim);
+      }
+
+      const { data: manutList, error: errManut } = await manutQuery;
+      if (errManut) throw errManut;
+
+      (manutList || []).forEach((m: any) => {
+        const status = (m.status || '').toUpperCase();
+        if (status === 'AGENDADA') manutencoesPendentes += 1;
+        if (status === 'VENCIDA') manutencoesVencidas += 1;
+
+        const cat = (m.categoria || 'desconhecida').toString();
+        const valor = m.valor_total != null ? Number(m.valor_total) : 0;
+        if (m.categoria === 'preventiva') preventivasPeriodo += 1;
+        if (m.categoria === 'corretiva') corretivasPeriodo += 1;
+
+        if (valor > 0) {
+          custoManutencaoPorCategoria[cat] = (custoManutencaoPorCategoria[cat] || 0) + valor;
+          if (m.veiculo_id) {
+            custoManutencaoPorVeiculo[m.veiculo_id] =
+              (custoManutencaoPorVeiculo[m.veiculo_id] || 0) + valor;
+          }
+          const lojaId = m.loja_id || null;
+          if (lojaId) {
+            custoManutencaoPorLoja[lojaId] = (custoManutencaoPorLoja[lojaId] || 0) + valor;
+          }
+        }
+      });
     }
   }
 
@@ -868,6 +914,19 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
     semanas_recentes: semanasRecentes,
     pode_iniciar_semana: podeIniciarSemana,
     proxima_semana_sugestao: proximaSemanaSugestao,
+    manutencoes_pendentes: manutencoesPendentes,
+    manutencoes_vencidas: manutencoesVencidas,
+    preventivas_periodo: preventivasPeriodo,
+    corretivas_periodo: corretivasPeriodo,
+    custo_manutencao_por_categoria: Object.entries(custoManutencaoPorCategoria).map(
+      ([categoria, valor]) => ({ categoria, valor }),
+    ),
+    custo_manutencao_por_veiculo: Object.entries(custoManutencaoPorVeiculo).map(
+      ([veiculo_id, valor]) => ({ veiculo_id, valor }),
+    ),
+    custo_manutencao_por_loja: Object.entries(custoManutencaoPorLoja).map(
+      ([loja_id, valor]) => ({ loja_id, valor }),
+    ),
   };
 }
 
@@ -1267,7 +1326,7 @@ export async function updateVeiculo(regra: UserRegraContext, veiculoId: string, 
 export async function listManutencoes(regra: UserRegraContext, filters: {
   loja_id?: string;
   veiculo_id?: string;
-  status?: 'AGENDADA' | 'REALIZADA' | 'VENCIDA';
+  status?: 'AGENDADA' | 'REALIZADA' | 'VENCIDA' | 'EM_EXECUCAO';
   tipo?: string;
 }) {
   const isGestorGlobal = isGestorGlobalFn(regra);
@@ -1306,7 +1365,7 @@ export async function listManutencoes(regra: UserRegraContext, filters: {
 
   let manutQuery = supabase
     .from('veiculo_manutencao')
-    .select('id, veiculo_id, tipo, data_manutencao, km_troca, km_proxima_troca, observacao, status, oc_id, created_at')
+    .select('id, veiculo_id, tipo, data_manutencao, km_troca, km_proxima_troca, observacao, status, oc_id, created_at, loja_id, tipo_manutencao_id, categoria, valor_total')
     .in('veiculo_id', filters.veiculo_id ? [filters.veiculo_id] : veiculoIds)
     .order('data_manutencao', { ascending: false });
 
@@ -1319,11 +1378,49 @@ export async function listManutencoes(regra: UserRegraContext, filters: {
 
   const { data, error } = await manutQuery;
   if (error) throw error;
-  const list = data || [];
-  return list.map((m: any) => ({
-    ...m,
-    loja_id: veiculoPorLoja[m.veiculo_id] || null,
-  }));
+  const list = (data || []) as any[];
+
+  const manutencaoIds = list.map((m) => m.id);
+  let tiposPorId: Record<string, any> = {};
+  let tiposPorCodigo: Record<string, any> = {};
+
+  if (list.some((m) => m.tipo_manutencao_id)) {
+    const { data: tipos, error: errTipos } = await supabase
+      .from('veiculo_tipos_manutencao')
+      .select('id, codigo, categoria');
+    if (errTipos) throw errTipos;
+    (tipos || []).forEach((t: any) => {
+      tiposPorId[t.id] = t;
+      if (t.codigo) tiposPorCodigo[t.codigo] = t;
+    });
+  }
+
+  let controlesPorManutencao: Record<string, any> = {};
+  if (manutencaoIds.length > 0) {
+    const { data: controles, error: errControles } = await supabase
+      .from('veiculo_manutencao_controles')
+      .select('*')
+      .in('manutencao_id', manutencaoIds);
+    if (errControles) throw errControles;
+    (controles || []).forEach((c: any) => {
+      controlesPorManutencao[c.manutencao_id] = c;
+    });
+  }
+
+  return list.map((m: any) => {
+    const tipoCfg =
+      (m.tipo_manutencao_id && tiposPorId[m.tipo_manutencao_id]) ||
+      (m.tipo && tiposPorCodigo[m.tipo]) ||
+      null;
+    const categoria = m.categoria || tipoCfg?.categoria || null;
+
+    return {
+      ...m,
+      loja_id: m.loja_id || veiculoPorLoja[m.veiculo_id] || null,
+      categoria,
+      controle: controlesPorManutencao[m.id] || null,
+    };
+  });
 }
 
 /** Cria manutenção de veículo (troca de óleo, revisão, etc.) */
@@ -1334,7 +1431,13 @@ export async function createManutencao(regra: UserRegraContext, body: {
   km_troca: number;
   km_proxima_troca: number;
   observacao?: string | null;
-  status?: 'AGENDADA' | 'REALIZADA' | 'VENCIDA';
+  status?: 'AGENDADA' | 'REALIZADA' | 'VENCIDA' | 'EM_EXECUCAO';
+  recorrencia_km?: number | null;
+  recorrencia_dias?: number | null;
+  alertar_com_x_km_antes?: number | null;
+  alertar_com_x_dias_antes?: number | null;
+  valor_total?: number | null;
+  dados_extras?: any;
 }) {
   // Verifica acesso ao veículo via loja
   const { data: vls, error: errVls } = await supabase
@@ -1346,28 +1449,191 @@ export async function createManutencao(regra: UserRegraContext, body: {
   if (lojaId && !podeAcessarLoja(regra, lojaId)) throw new Error('Acesso negado à loja');
 
   const status = body.status || 'AGENDADA';
-  if (!['AGENDADA', 'REALIZADA', 'VENCIDA'].includes(status)) {
+  if (!['AGENDADA', 'REALIZADA', 'VENCIDA', 'EM_EXECUCAO'].includes(status)) {
     throw new Error('Status de manutenção inválido');
   }
 
+  let tipo_manutencao_id: string | null = null;
+  let categoria: string | null = null;
+
+  if (body.tipo) {
+    const { data: tipoCfg } = await supabase
+      .from('veiculo_tipos_manutencao')
+      .select('id, categoria')
+      .eq('codigo', body.tipo)
+      .maybeSingle();
+    if (tipoCfg?.id) {
+      tipo_manutencao_id = tipoCfg.id;
+      categoria = tipoCfg.categoria || null;
+    }
+  }
+
+  const insertPayload: any = {
+    veiculo_id: body.veiculo_id,
+    tipo: body.tipo,
+    data_manutencao: body.data_manutencao,
+    km_troca: body.km_troca,
+    km_proxima_troca: body.km_proxima_troca,
+    observacao: body.observacao ?? null,
+    status,
+    loja_id: lojaId,
+    tipo_manutencao_id,
+    categoria,
+    valor_total: body.valor_total ?? null,
+    dados_extras: body.dados_extras ?? null,
+  };
+
   const { data, error } = await supabase
     .from('veiculo_manutencao')
-    .insert({
-      veiculo_id: body.veiculo_id,
-      tipo: body.tipo,
-      data_manutencao: body.data_manutencao,
-      km_troca: body.km_troca,
-      km_proxima_troca: body.km_proxima_troca,
-      observacao: body.observacao ?? null,
-      status,
-    })
-    .select('id, veiculo_id, tipo, data_manutencao, km_troca, km_proxima_troca, observacao, status, oc_id, created_at')
+    .insert(insertPayload)
+    .select('id, veiculo_id, tipo, data_manutencao, km_troca, km_proxima_troca, observacao, status, oc_id, created_at, loja_id, tipo_manutencao_id, categoria, valor_total')
     .single();
   if (error) throw error;
+
+  if (body.recorrencia_km || body.recorrencia_dias) {
+    const kmProx =
+      typeof body.recorrencia_km === 'number' && !Number.isNaN(body.recorrencia_km)
+        ? Number(body.km_troca || 0) + Number(body.recorrencia_km)
+        : body.km_proxima_troca ?? null;
+
+    const dataMan = new Date(body.data_manutencao);
+    const dataProx =
+      typeof body.recorrencia_dias === 'number' && !Number.isNaN(body.recorrencia_dias)
+        ? new Date(dataMan.getTime() + body.recorrencia_dias * 24 * 60 * 60 * 1000)
+        : null;
+
+    await supabase
+      .from('veiculo_manutencao_controles')
+      .insert({
+        manutencao_id: data.id,
+        recorrencia_km: body.recorrencia_km ?? null,
+        recorrencia_dias: body.recorrencia_dias ?? null,
+        km_proxima_manutencao: kmProx,
+        data_proxima_manutencao: dataProx ? dataProx.toISOString().slice(0, 10) : null,
+        alertar_com_x_km_antes: body.alertar_com_x_km_antes ?? null,
+        alertar_com_x_dias_antes: body.alertar_com_x_dias_antes ?? null,
+      });
+  }
+
+  if (body.tipo === 'troca_oleo') {
+    await supabase
+      .from('veiculos')
+      .update({
+        data_ultima_troca_oleo: body.data_manutencao,
+        km_ultima_troca_oleo: body.km_troca,
+        km_proxima_troca_oleo: body.km_proxima_troca,
+        data_proxima_troca_oleo: body.recorrencia_dias
+          ? new Date(new Date(body.data_manutencao).getTime() + body.recorrencia_dias * 86400000)
+              .toISOString()
+              .slice(0, 10)
+          : null,
+        data_ultima_atualizacao_km: new Date().toISOString(),
+      })
+      .eq('id', body.veiculo_id);
+  }
+
+  if (body.tipo === 'revisao_periodica') {
+    await supabase
+      .from('veiculos')
+      .update({
+        data_ultima_revisao: body.data_manutencao,
+        km_ultima_revisao: body.km_troca,
+        km_proxima_revisao: body.km_proxima_troca,
+        data_proxima_revisao: body.recorrencia_dias
+          ? new Date(new Date(body.data_manutencao).getTime() + body.recorrencia_dias * 86400000)
+              .toISOString()
+              .slice(0, 10)
+          : null,
+        data_ultima_atualizacao_km: new Date().toISOString(),
+      })
+      .eq('id', body.veiculo_id);
+  }
+
   return {
     ...data,
     loja_id: lojaId,
   };
+}
+
+/** Atualiza controles de manutenção (vencimento por KM/data) e reflete status VENCIDA */
+export async function atualizarAlertasManutencao() {
+  const { data: controles, error } = await supabase
+    .from('veiculo_manutencao_controles')
+    .select('id, manutencao_id, km_proxima_manutencao, data_proxima_manutencao, vencida');
+  if (error) throw error;
+  if (!controles || controles.length === 0) return { atualizados: 0 };
+
+  const manutencaoIds = controles.map((c: any) => c.manutencao_id);
+  const { data: manutencoes, error: errManut } = await supabase
+    .from('veiculo_manutencao')
+    .select('id, veiculo_id, status')
+    .in('id', manutencaoIds);
+  if (errManut) throw errManut;
+
+  const veiculoIds = [...new Set((manutencoes || []).map((m: any) => m.veiculo_id))];
+  const { data: veiculos, error: errVeic } = await supabase
+    .from('veiculos')
+    .select('id, km_atual')
+    .in('id', veiculoIds);
+  if (errVeic) throw errVeic;
+
+  const manutPorId: Record<string, any> = {};
+  (manutencoes || []).forEach((m: any) => {
+    manutPorId[m.id] = m;
+  });
+  const veicPorId: Record<string, any> = {};
+  (veiculos || []).forEach((v: any) => {
+    veicPorId[v.id] = v;
+  });
+
+  const hoje = new Date();
+  let totalAtualizados = 0;
+
+  // eslint-disable-next-line no-restricted-syntax
+  for (const c of controles as any[]) {
+    const manut = manutPorId[c.manutencao_id];
+    if (!manut) continue;
+    const veic = veicPorId[manut.veiculo_id];
+
+    const kmAtual = veic?.km_atual != null ? Number(veic.km_atual) : null;
+    const kmProx = c.km_proxima_manutencao != null ? Number(c.km_proxima_manutencao) : null;
+
+    let vencidoPorKm = false;
+    if (kmAtual != null && kmProx != null && !Number.isNaN(kmAtual) && !Number.isNaN(kmProx)) {
+      vencidoPorKm = kmAtual >= kmProx;
+    }
+
+    let vencidoPorData = false;
+    if (c.data_proxima_manutencao) {
+      const dataProx = new Date(c.data_proxima_manutencao);
+      if (!Number.isNaN(dataProx.getTime())) {
+        vencidoPorData = hoje > dataProx;
+      }
+    }
+
+    const deveMarcarVencida = (vencidoPorKm || vencidoPorData) && !c.vencida;
+    if (!deveMarcarVencida) continue;
+
+    totalAtualizados += 1;
+
+    await supabase
+      .from('veiculo_manutencao_controles')
+      .update({
+        vencida: true,
+        status_alerta: 'vencida',
+        ultima_verificacao_em: new Date().toISOString(),
+      })
+      .eq('id', c.id);
+
+    if (manut.status !== 'VENCIDA') {
+      await supabase
+        .from('veiculo_manutencao')
+        .update({ status: 'VENCIDA', updated_at: new Date().toISOString() })
+        .eq('id', manut.id);
+    }
+  }
+
+  return { atualizados: totalAtualizados };
 }
 
 /** Remove veículo se não possuir OCs vinculadas */
@@ -1474,6 +1740,17 @@ export async function listUsuariosMotoristas(regra: UserRegraContext) {
     .select('id, nome, email')
     .eq('nivel', 'motorista')
     .order('nome');
+  if (error) throw error;
+  return data || [];
+}
+
+/** Catálogo de tipos de manutenção de veículos */
+export async function listTiposManutencao() {
+  const { data, error } = await supabase
+    .from('veiculo_tipos_manutencao')
+    .select('id, nome, codigo, categoria, controla_por_km, controla_por_data, campos_extras_config')
+    .eq('ativo', true)
+    .order('ordem_exibicao', { ascending: true });
   if (error) throw error;
   return data || [];
 }
