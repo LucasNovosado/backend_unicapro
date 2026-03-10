@@ -822,6 +822,7 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
   let manutencoesVencidas = 0;
   let preventivasPeriodo = 0;
   let corretivasPeriodo = 0;
+  let totalManutencoesPeriodo = 0;
   let custoManutencaoPorCategoria: Record<string, number> = {};
   let custoManutencaoPorVeiculo: Record<string, number> = {};
   let custoManutencaoPorLoja: Record<string, number> = {};
@@ -867,6 +868,8 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
 
       const { data: manutList, error: errManut } = await manutQuery;
       if (errManut) throw errManut;
+
+      totalManutencoesPeriodo = (manutList || []).length;
 
       (manutList || []).forEach((m: any) => {
         const status = (m.status || '').toUpperCase();
@@ -918,6 +921,7 @@ export async function getDashboardOc(regra: UserRegraContext, filters: {
     manutencoes_vencidas: manutencoesVencidas,
     preventivas_periodo: preventivasPeriodo,
     corretivas_periodo: corretivasPeriodo,
+    total_manutencoes_periodo: totalManutencoesPeriodo,
     custo_manutencao_por_categoria: Object.entries(custoManutencaoPorCategoria).map(
       ([categoria, valor]) => ({ categoria, valor }),
     ),
