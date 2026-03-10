@@ -1373,7 +1373,8 @@ export async function listManutencoes(regra: UserRegraContext, filters: {
 
   if (filters.veiculo_id) {
     manutQuery = manutQuery.eq('veiculo_id', filters.veiculo_id);
-  } else {
+  } else if (veiculoIds.length > 0) {
+    // Para usuários com veículos vinculados, restringe ao conjunto permitido
     manutQuery = manutQuery.in('veiculo_id', veiculoIds);
   }
 
