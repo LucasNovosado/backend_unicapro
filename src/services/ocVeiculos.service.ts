@@ -1361,8 +1361,8 @@ export async function listManutencoes(regra: UserRegraContext, filters: {
       // Veículo não pertence às lojas acessíveis
       return [];
     }
-  } else if (veiculoIds.length === 0) {
-    // Sem filtro de veículo e sem vinculação a lojas -> nada a listar
+  } else if (!isGestorGlobal && veiculoIds.length === 0) {
+    // Usuário restrito sem veículos vinculados a lojas permitidas -> nada a listar
     return [];
   }
 
