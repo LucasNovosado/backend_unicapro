@@ -143,6 +143,11 @@ router.post('/ocs/semanas/iniciar', authenticate, getUserRegra, ocVeiculosContro
 router.get('/ocs/veiculos', authenticate, getUserRegra, ocVeiculosController.getVeiculosByLoja);
 router.get('/ocs/motoristas', authenticate, getUserRegra, ocVeiculosController.getMotoristasByLoja);
 router.get('/ocs/dashboard', authenticate, getUserRegra, validate(getDashboardOcSchema), ocVeiculosController.getDashboardOc);
+// Rotas de manutenção de veículos precisam vir ANTES de /ocs/:id
+router.get('/ocs/manutencoes', authenticate, getUserRegra, ocVeiculosController.listManutencoes);
+router.post('/ocs/manutencoes', authenticate, getUserRegra, ocVeiculosController.createManutencao);
+router.post('/ocs/manutencoes/atualizar-alertas', authenticate, getUserRegra, ocVeiculosController.atualizarAlertasManutencao);
+router.get('/ocs/manutencoes/tipos', authenticate, getUserRegra, ocVeiculosController.listTiposManutencao);
 router.get('/ocs/:id', authenticate, getUserRegra, ocVeiculosController.getOcById);
 router.post('/ocs', authenticate, getUserRegra, validate(createOcSchema), ocVeiculosController.createOc);
 router.post('/ocs/:id/registrar-saida', authenticate, getUserRegra, validate(registrarSaidaOcSchema), ocVeiculosController.registrarSaida);
@@ -158,10 +163,5 @@ router.delete('/veiculos/:id', authenticate, getUserRegra, validate(deleteVeicul
 router.get('/motoristas/usuarios-motoristas', authenticate, getUserRegra, ocVeiculosController.getUsuariosMotoristas);
 router.get('/motoristas', authenticate, getUserRegra, ocVeiculosController.listMotoristas);
 router.post('/motoristas', authenticate, getUserRegra, validate(createMotoristaSchema), ocVeiculosController.createMotorista);
-
-router.get('/ocs/manutencoes', authenticate, getUserRegra, ocVeiculosController.listManutencoes);
-router.post('/ocs/manutencoes', authenticate, getUserRegra, ocVeiculosController.createManutencao);
-router.post('/ocs/manutencoes/atualizar-alertas', authenticate, getUserRegra, ocVeiculosController.atualizarAlertasManutencao);
-router.get('/ocs/manutencoes/tipos', authenticate, getUserRegra, ocVeiculosController.listTiposManutencao);
 
 export default router;
